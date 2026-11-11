@@ -75,3 +75,35 @@ JJ.Sprites = (() => {
     },
   };
 })();
+
+// ---------------------------------------------------------------- DOM icons
+// Pixel-art icons for menus/HUD as CSS sprites cut from the same atlas.
+JJ.ATLAS_ROWS = Math.max(...Object.values(JJ.SPRITE_INDEX).map((s) => s[1])) + 1;
+
+JJ.iconStyle = (name, size) => {
+  const s = JJ.SPRITE_INDEX[name];
+  if (!s) return '';
+  return `width:${size}px;height:${size}px;background-size:${16 * size}px ${JJ.ATLAS_ROWS * size}px;background-position:${-s[0] * size}px ${-s[1] * size}px`;
+};
+
+// HTML for an inline icon.
+JJ.icon = (name, size = 24, cls = '') =>
+  JJ.SPRITE_INDEX[name] ? `<i class="px ${cls}" style="${JJ.iconStyle(name, size)}" aria-hidden="true"></i>` : '';
+
+// Upgrade / Armory item -> sprite name.
+JJ.upgradeIconName = (id) =>
+  ({ magnet: 'magnet', _gold: 'i_gold', _heal: 'i_heal' })[id] || `i_${id}`;
+
+JJ.META_ICONS = {
+  toughness: 'heart', might: 'i_might', haste: 'i_haste', fleet: 'i_fleet', magnet: 'magnet', recovery: 'i_regen',
+  armor: 'i_armor', growth: 'i_growth', greed: 'i_greed', reroll: 'i_crit', insight: 'i_insight', phoenix: 'i_phoenix',
+  extraArm: 'i_extraArm',
+};
+
+// Fill <i class="px" data-icon="name" data-size="24"> placeholders.
+JJ.hydrateIcons = (root = document) => {
+  root.querySelectorAll('i.px[data-icon]').forEach((el) => {
+    el.setAttribute('style', JJ.iconStyle(el.dataset.icon, +(el.dataset.size || 24)));
+    el.setAttribute('aria-hidden', 'true');
+  });
+};

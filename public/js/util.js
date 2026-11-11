@@ -67,6 +67,9 @@ JJ.formatTime = (t) => {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
+// Escape text for safe insertion into innerHTML.
+JJ.esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
 JJ.formatNum = (n) => {
   if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
   if (n >= 1e4) return (n / 1e3).toFixed(1) + 'k';

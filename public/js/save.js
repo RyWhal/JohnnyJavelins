@@ -2,19 +2,19 @@
 'use strict';
 
 JJ.META = [
-  { id: 'toughness', name: 'Toughness', icon: '❤️', max: 5, base: 40, growth: 1.6, desc: '+10 max HP per rank' },
-  { id: 'might', name: 'Might', icon: '💪', max: 5, base: 60, growth: 1.65, desc: '+8% javelin damage per rank' },
-  { id: 'haste', name: 'Haste', icon: '🤾', max: 5, base: 60, growth: 1.65, desc: '+6% throw rate per rank' },
-  { id: 'fleet', name: 'Fleet Foot', icon: '👟', max: 3, base: 50, growth: 1.7, desc: '+5% move speed per rank' },
-  { id: 'magnet', name: 'Magnetism', icon: '🧲', max: 3, base: 40, growth: 1.6, desc: '+15% pickup range per rank' },
-  { id: 'recovery', name: 'Recovery', icon: '🌿', max: 3, base: 70, growth: 1.7, desc: '+0.2 HP regen/sec per rank' },
-  { id: 'armor', name: 'Thick Hide', icon: '🛡️', max: 3, base: 90, growth: 1.8, desc: '+1 armor per rank' },
-  { id: 'growth', name: 'Growth', icon: '📜', max: 5, base: 50, growth: 1.6, desc: '+8% XP gain per rank' },
-  { id: 'greed', name: 'Greed', icon: '💰', max: 5, base: 50, growth: 1.6, desc: '+10% gold gain per rank' },
-  { id: 'reroll', name: 'Second Opinion', icon: '🎲', max: 5, base: 80, growth: 1.55, desc: '+1 reroll per run per rank' },
-  { id: 'insight', name: 'Insight', icon: '🔮', max: 1, base: 900, growth: 1, desc: 'See 4 upgrade choices instead of 3' },
-  { id: 'phoenix', name: 'Phoenix Feather', icon: '🪶', max: 1, base: 750, growth: 1, desc: 'Revive once per run at 50% HP' },
-  { id: 'extraArm', name: 'Extra Arm', icon: '🦾', max: 2, base: 600, growth: 2.5, desc: '+1 javelin per throw, from the start' },
+  { id: 'toughness', name: 'Toughness', max: 5, base: 40, growth: 1.6, desc: '+10 max HP per rank' },
+  { id: 'might', name: 'Might', max: 5, base: 60, growth: 1.65, desc: '+8% javelin damage per rank' },
+  { id: 'haste', name: 'Haste', max: 5, base: 60, growth: 1.65, desc: '+6% throw rate per rank' },
+  { id: 'fleet', name: 'Fleet Foot', max: 3, base: 50, growth: 1.7, desc: '+5% move speed per rank' },
+  { id: 'magnet', name: 'Magnetism', max: 3, base: 40, growth: 1.6, desc: '+15% pickup range per rank' },
+  { id: 'recovery', name: 'Recovery', max: 3, base: 70, growth: 1.7, desc: '+0.2 HP regen/sec per rank' },
+  { id: 'armor', name: 'Thick Hide', max: 3, base: 90, growth: 1.8, desc: '+1 armor per rank' },
+  { id: 'growth', name: 'Growth', max: 5, base: 50, growth: 1.6, desc: '+8% XP gain per rank' },
+  { id: 'greed', name: 'Greed', max: 5, base: 50, growth: 1.6, desc: '+10% gold gain per rank' },
+  { id: 'reroll', name: 'Second Opinion', max: 5, base: 80, growth: 1.55, desc: '+1 reroll per run per rank' },
+  { id: 'insight', name: 'Insight', max: 1, base: 900, growth: 1, desc: 'See 4 upgrade choices instead of 3' },
+  { id: 'phoenix', name: 'Phoenix Feather', max: 1, base: 750, growth: 1, desc: 'Revive once per run at 50% HP' },
+  { id: 'extraArm', name: 'Extra Arm', max: 2, base: 600, growth: 2.5, desc: '+1 javelin per throw, from the start' },
 ];
 
 // Upgrade cards that must be bought in the Armory before they show up in runs.

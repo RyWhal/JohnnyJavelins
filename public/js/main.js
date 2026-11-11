@@ -19,6 +19,7 @@
     if (document.hidden && game.state === 'playing') ui.togglePause();
   });
 
+  JJ.hydrateIcons();
   ui.openMenu();
 
   // If a run is clearly struggling, drop to low graphics automatically.

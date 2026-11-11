@@ -80,7 +80,7 @@ JJ.UI = class UI {
     this.click('btn-refund', () => {
       if (!confirm('Refund all Training ranks for their full gold cost?')) return;
       const n = JJ.Save.refundMeta();
-      this.toast(`Refunded 🪙 ${n}`);
+      this.toast(`Refunded ${n} gold`, 2.2, 'coin');
       this.renderShop();
     });
     this.click('btn-reroll', () => this.doReroll());
@@ -182,20 +182,20 @@ JJ.UI = class UI {
         body.innerHTML = '<div class="lb-msg">No runs yet. Be the first Johnny!</div>';
         return;
       }
-      const medal = ['🥇', '🥈', '🥉'];
+      const medal = ['i_medal1', 'i_medal2', 'i_medal3'].map((m) => JJ.icon(m, 26));
       body.innerHTML = `<table class="lb-table">
         <thead><tr><th>#</th><th>Name</th><th>Survived</th><th>Kills</th><th>Javelins</th><th>Level</th></tr></thead>
         <tbody>${entries
           .map((e) => `<tr class="${e.rank <= 3 ? 'top' + e.rank : ''} ${e.rank === this.myRank ? 'me' : ''}">
             <td>${medal[e.rank - 1] || e.rank}</td>
-            <td>Johnny${e.won ? ' 🐉' : ''}</td>
+            <td>Johnny${e.won ? ' ' + JJ.icon('dragon', 22, 'inl') : ''}</td>
             <td>${JJ.formatTime(e.time_s)}</td>
             <td>${JJ.formatNum(e.kills)}</td>
             <td>${e.javelins ? JJ.formatNum(e.javelins) : '—'}</td>
             <td>${e.level}</td>
           </tr>`)
           .join('')}</tbody></table>
-        <div class="lb-msg" style="padding:10px 0 0">${total} run${total === 1 ? '' : 's'} recorded · <b>${(totalJavelins || 0).toLocaleString()}</b> javelins thrown by all Johnnys · 🐉 = slew the dragon</div>`;
+        <div class="lb-msg" style="padding:10px 0 0">${total} run${total === 1 ? '' : 's'} recorded · <b>${(totalJavelins || 0).toLocaleString()}</b> javelins thrown by all Johnnys · ${JJ.icon('dragon', 18, 'inl')} = slew the dragon</div>`;
     } catch (err) {
       body.innerHTML = '<div class="lb-msg">Couldn\'t reach the leaderboard right now. Try again in a moment.</div>';
     }
@@ -219,7 +219,7 @@ JJ.UI = class UI {
       this.myRank = res.rank;
       el.className = 'go-rank';
       el.textContent = res.rank <= 25
-        ? `🏆 Johnny placed #${res.rank} of ${res.total} on the leaderboard!`
+        ? `${JJ.icon('i_trophy', 22, 'inl')} Johnny placed #${res.rank} of ${res.total} on the leaderboard!`
         : `Johnny placed #${res.rank} of ${res.total}.`;
     } catch (err) {
       el.textContent = `Couldn't submit to the leaderboard (${err.message}).`;
@@ -322,9 +322,9 @@ JJ.UI = class UI {
 
   renderOptions() {
     const s = JJ.Save.data.settings;
-    this.$('opt-aim').textContent = s.aim === 'auto' ? '🎯 Auto' : '🖱️ Mouse';
+    this.$('opt-aim').textContent = s.aim === 'auto' ? 'Auto' : 'Mouse';
     this.$('opt-sound').textContent = s.sound ? 'On' : 'Off';
-    this.$('opt-quality').textContent = s.quality === 'low' ? '⚡ Low' : '✨ High';
+    this.$('opt-quality').textContent = s.quality === 'low' ? 'Low' : 'High';
     this.$('opt-dmg').textContent = s.damageNumbers ? 'On' : 'Off';
     this.$('opt-shake').textContent = s.shake ? 'On' : 'Off';
   }
@@ -351,9 +351,9 @@ JJ.UI = class UI {
         const cost = S.metaCost(m);
         const pips = Array.from({ length: m.max }, (_, i) => `<span class="pip ${i < lvl ? 'on' : ''}"></span>`).join('');
         return `<div class="shop-item ${maxed ? 'maxed' : ''}">
-          <div class="si-top"><span class="si-icon">${m.icon}</span><div><div class="si-name">${m.name}</div><div class="pips">${pips}</div></div></div>
+          <div class="si-top"><span class="si-icon">${JJ.icon(JJ.META_ICONS[m.id], 40)}</span><div><div class="si-name">${m.name}</div><div class="pips">${pips}</div></div></div>
           <div class="si-desc">${m.desc}</div>
-          <button class="btn small" data-buy="${m.id}" ${maxed || gold < cost ? 'disabled' : ''}>${maxed ? 'MAXED' : `Train · 🪙 ${cost}`}</button>
+          <button class="btn small" data-buy="${m.id}" ${maxed || gold < cost ? 'disabled' : ''}>${maxed ? 'MAXED' : `Train · ${JJ.icon('coin', 16, 'inl')} ${cost}`}</button>
         </div>`;
       }).join('');
     } else if (this.shopTab === 'techniques') {
@@ -361,9 +361,9 @@ JJ.UI = class UI {
         const u = JJ.UPGRADES_BY_ID[un.id];
         const owned = S.isUnlocked(un.id);
         return `<div class="shop-item ${owned ? 'maxed' : ''}">
-          <div class="si-top"><span class="si-icon">${u.icon}</span><div class="si-name">${u.name}</div></div>
+          <div class="si-top"><span class="si-icon">${JJ.icon(JJ.upgradeIconName(u.id), 40)}</span><div class="si-name">${u.name}</div></div>
           <div class="si-desc">${u.desc(1)}<br><i>Adds this card to the level-up pool.</i></div>
-          <button class="btn small" data-unlock="${un.id}" ${owned || gold < un.cost ? 'disabled' : ''}>${owned ? 'LEARNED' : `Learn · 🪙 ${un.cost}`}</button>
+          <button class="btn small" data-unlock="${un.id}" ${owned || gold < un.cost ? 'disabled' : ''}>${owned ? 'LEARNED' : `Learn · ${JJ.icon('coin', 16, 'inl')} ${un.cost}`}</button>
         </div>`;
       }).join('');
     } else {
@@ -384,8 +384,8 @@ JJ.UI = class UI {
               .map(([k, v]) => `${JJ.UPGRADES_BY_ID[k].name} ${v}`)
               .join(' + ');
             return found
-              ? `<span class="lg found" title="${req}">${u.icon} ${u.name}</span>`
-              : `<span class="lg unknown" title="Hint: ${req}">❓ ???</span>`;
+              ? `<span class="lg found" title="${req}">${JJ.icon(JJ.upgradeIconName(u.id), 20, 'inl')} ${u.name}</span>`
+              : `<span class="lg unknown" title="Hint: ${req}">??? </span>`;
           })
           .join('')}<p class="si-desc">Hover an undiscovered legendary for a hint.</p></div>
       </div>`;
@@ -414,7 +414,7 @@ JJ.UI = class UI {
     const lvlText = legendary ? '★ Legendary Evolution ★' : cur === 0 ? 'New!' : `Lv ${cur} → ${next}${next === u.max ? ' (MAX)' : ''}`;
     return `<button class="card ${legendary ? 'legendary' : ''}" data-idx="${i}">
       <kbd>${i + 1}</kbd>
-      <div class="card-icon">${u.icon}</div>
+      <div class="card-icon">${JJ.icon(JJ.upgradeIconName(u.id), 48)}</div>
       <div>
         <div class="card-name">${u.name}</div>
         <div class="card-lvl">${lvlText}</div>
@@ -442,7 +442,7 @@ JJ.UI = class UI {
     JJ.Audio.sfx.click();
     this.game.chooseUpgrade(u);
     this.hideAll();
-    if (u.kind === 'legendary') this.toast(`${u.icon} ${u.name} unleashed!`, 3);
+    if (u.kind === 'legendary') this.toast(`${u.name} unleashed!`, 3, JJ.upgradeIconName(u.id));
   }
 
   doReroll() {
@@ -455,10 +455,10 @@ JJ.UI = class UI {
     items.innerHTML =
       granted
         .map(({ u, level }, i) => `<div class="chest-item ${u.kind === 'legendary' ? 'legendary' : ''}" style="animation-delay:${i * 0.25}s">
-          <span class="ci-icon">${u.icon}</span>
+          <span class="ci-icon">${JJ.icon(JJ.upgradeIconName(u.id), 36)}</span>
           <div><div class="ci-name">${u.name}</div><div class="ci-lvl">${u.kind === 'legendary' ? '★ LEGENDARY ★' : `Level ${level}`}</div></div>
         </div>`)
-        .join('') + `<div class="chest-item" style="animation-delay:${granted.length * 0.25}s"><span class="ci-icon">🪙</span><div class="ci-name">+${gold} gold</div></div>`;
+        .join('') + `<div class="chest-item" style="animation-delay:${granted.length * 0.25}s"><span class="ci-icon">${JJ.icon('i_gold', 36)}</span><div class="ci-name">+${gold} gold</div></div>`;
     this.show('chest');
   }
 
@@ -499,7 +499,7 @@ JJ.UI = class UI {
           .map((id) => {
             const u = JJ.UPGRADES_BY_ID[id];
             const l = g.levelOf(id);
-            return `<div class="pb-row ${u.kind === 'legendary' ? 'legendary' : ''}"><span class="pb-icon">${u.icon}</span><span class="pb-name">${u.name}</span><span class="pb-lvl">${u.kind === 'legendary' ? '★' : `${l}/${u.max}`}</span></div>`;
+            return `<div class="pb-row ${u.kind === 'legendary' ? 'legendary' : ''}"><span class="pb-icon">${JJ.icon(JJ.upgradeIconName(u.id), 24)}</span><span class="pb-name">${u.name}</span><span class="pb-lvl">${u.kind === 'legendary' ? '★' : `${l}/${u.max}`}</span></div>`;
           })
           .join('')
       : '<i>Nothing yet. Go collect some XP!</i>';
@@ -508,31 +508,37 @@ JJ.UI = class UI {
   showGameOver(r) {
     this.$('hud').classList.add('hidden');
     const name = JJ.Save.data.johnny.name || 'Johnny';
-    this.$('go-title').textContent = r.won ? `🏆 VICTORY! ${name} slew the Dragon!` : `💀 ${name} has fallen`;
-    const legends = r.legendaries.map((id) => JJ.UPGRADES_BY_ID[id].icon + ' ' + JJ.UPGRADES_BY_ID[id].name).join(', ');
+    this.$('go-title').innerHTML = r.won
+      ? `${JJ.icon('i_trophy', 36, 'inl')} VICTORY! ${JJ.esc(name)} slew the Dragon!`
+      : `${JJ.icon('i_skull', 36, 'inl')} ${JJ.esc(name)} has fallen`;
+    const legends = r.legendaries.map((id) => JJ.icon(JJ.upgradeIconName(id), 20, 'inl') + ' ' + JJ.UPGRADES_BY_ID[id].name).join(', ');
     this.$('go-stats').innerHTML = `
       <div>Survived</div><div>${JJ.formatTime(r.time)}</div>
       <div>Level reached</div><div>${r.level}</div>
       <div>Monsters skewered</div><div>${JJ.formatNum(r.kills)}</div>
       <div>Javelins thrown</div><div>${JJ.formatNum(r.javelins)}</div>
       ${legends ? `<div>Legendaries</div><div>${legends}</div>` : ''}
-      <div>Gold collected</div><div>🪙 ${r.gold}</div>
-      <div>Survival bonus</div><div>🪙 ${r.bonus}</div>
-      <div class="total">Total banked</div><div class="total">🪙 ${r.total}</div>
+      <div>Gold collected</div><div>${JJ.icon('coin', 16, 'inl')} ${r.gold}</div>
+      <div>Survival bonus</div><div>${JJ.icon('coin', 16, 'inl')} ${r.bonus}</div>
+      <div class="total">Total banked</div><div class="total">${JJ.icon('coin', 16, 'inl')} ${r.total}</div>
       ${r.newBest ? '<div class="new-best" style="grid-column:1/-1">New best survival time!</div>' : ''}`;
     this.submitRun(r);
     setTimeout(() => this.show('gameover'), r.won ? 200 : 900);
   }
 
-  toast(msg, dur = 2.2) {
+  toast(msg, dur = 2.2, icon) {
     const box = this.$('toasts');
     const el = document.createElement('div');
     el.className = 'toast';
-    el.textContent = msg;
+    if (icon) el.innerHTML = JJ.icon(icon, 28, 'inl');
+    const text = document.createElement('span');
+    text.textContent = msg;
+    el.appendChild(text);
     box.appendChild(el);
     while (box.children.length > 4) box.firstChild.remove();
     setTimeout(() => el.remove(), dur * 1000);
   }
+
 
   // ------------------------------------------------------------ HUD
   set(id, val, prop = 'textContent') {
@@ -561,7 +567,7 @@ JJ.UI = class UI {
         .map((id) => {
           const u = JJ.UPGRADES_BY_ID[id];
           const l = g.levelOf(id);
-          return `<div class="bicon ${u.kind === 'legendary' ? 'legendary' : ''}" title="${u.name}">${u.icon}${u.kind === 'legendary' ? '' : `<small>${l}</small>`}</div>`;
+          return `<div class="bicon ${u.kind === 'legendary' ? 'legendary' : ''}" title="${u.name}">${JJ.icon(JJ.upgradeIconName(u.id), 24)}${u.kind === 'legendary' ? '' : `<small>${l}</small>`}</div>`;
         })
         .join('');
     }

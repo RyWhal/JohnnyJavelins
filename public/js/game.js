@@ -336,13 +336,13 @@ JJ.Game = class Game {
     const p = this.player;
     const d = Math.hypot(this.viewW, this.viewH) / 2 + 40;
     if (ev.type === 'swarm') {
-      this.ui.toast(`A horde of ${JJ.ENEMIES[ev.enemy].name}s surrounds you!`);
+      this.ui.toast(`A horde of ${JJ.ENEMIES[ev.enemy].name}s surrounds you!`, 2.2, ev.enemy);
       for (let i = 0; i < ev.count; i++) {
         const a = (i / ev.count) * JJ.TAU;
         this.spawnEnemy(ev.enemy, p.x + Math.cos(a) * d, p.y + Math.sin(a) * d);
       }
     } else if (ev.type === 'stampede') {
-      this.ui.toast('STAMPEDE!');
+      this.ui.toast('STAMPEDE!', 2.2, 'wolf');
       const a = Math.random() * JJ.TAU;
       const dirX = -Math.cos(a), dirY = -Math.sin(a);
       const cx = p.x + Math.cos(a) * d, cy = p.y + Math.sin(a) * d;
@@ -356,7 +356,7 @@ JJ.Game = class Game {
       const a = Math.random() * JJ.TAU;
       const b = this.spawnEnemy(ev.enemy, p.x + Math.cos(a) * this.viewW * 0.6, p.y + Math.sin(a) * this.viewH * 0.6);
       const major = JJ.ENEMIES[ev.enemy].boss === 'major';
-      this.ui.toast(`${major ? '⚠️ ' : '👑 '}${JJ.ENEMIES[ev.enemy].name} approaches!${major ? ' ⚠️' : ''}`, 4);
+      this.ui.toast(`${JJ.ENEMIES[ev.enemy].name} approaches!`, 4, ev.enemy);
       JJ.Audio.sfx.boss();
       this.shake = major ? 12 : 6;
       return b;
@@ -1057,7 +1057,7 @@ JJ.Game = class Game {
       }
       this.addDecal(e, 2.2);
       this.burst(e.x, e.y, e.color, 60, 300);
-      this.ui.toast(`${JJ.ENEMIES[e.type].name} has fallen!`, 3);
+      this.ui.toast(`${JJ.ENEMIES[e.type].name} has fallen!`, 3, 'chest');
       if (e.type === 'dragon') {
         this.victory();
         return;
@@ -1187,12 +1187,12 @@ JJ.Game = class Game {
         break;
       case 'magnet':
         for (const o of this.pickups) if (o.type === 'gem' || o.type === 'coin') o.attract = true;
-        this.ui.toast('🧲 Everything comes to Johnny!');
+        this.ui.toast('Everything comes to Johnny!', 2.2, 'magnet');
         JJ.Audio.sfx.heal();
         break;
       case 'frenzy':
         this.frenzyT = 8;
-        this.ui.toast('🔥 JAVELIN FRENZY! 🔥', 2);
+        this.ui.toast('JAVELIN FRENZY!', 2, 'frenzy');
         JJ.Audio.sfx.legendary();
         break;
       case 'chest':
@@ -1232,7 +1232,7 @@ JJ.Game = class Game {
         this.revive = false;
         p.hp = this.stats.maxHp * 0.5;
         p.inv = 2.5;
-        this.ui.toast(`🪶 The Phoenix Feather burns... ${JJ.Save.data.johnny.name} rises!`, 3);
+        this.ui.toast(`The Phoenix Feather burns... ${JJ.Save.data.johnny.name} rises!`, 3, 'i_phoenix');
         this.effects.push({ type: 'ring', x: p.x, y: p.y, r: 320, t: 0, life: 0.6, color: '#ffb347' });
         this.grid.each(p.x, p.y, 320, (e) => {
           if (e.dead) return;
@@ -1374,7 +1374,7 @@ JJ.Game = class Game {
 
   victory() {
     this.won = true;
-    this.ui.toast('🏆 THE DRAGON IS SLAIN! 🏆', 4);
+    this.ui.toast('THE DRAGON IS SLAIN!', 4, 'i_trophy');
     this.player.inv = 99;
     setTimeout(() => this.endRun(true), 1800);
   }
@@ -1407,5 +1407,5 @@ JJ.Game = class Game {
   }
 };
 
-JJ.FALLBACK_GOLD = { id: '_gold', name: 'Pouch of Gold', icon: '🪙', kind: 'johnny', max: 99, desc: () => 'Gain <b>25</b> gold.' };
-JJ.FALLBACK_HEAL = { id: '_heal', name: 'Roast Chicken', icon: '🍗', kind: 'johnny', max: 99, desc: () => 'Heal <b>50</b> HP.' };
+JJ.FALLBACK_GOLD = { id: '_gold', name: 'Pouch of Gold', kind: 'johnny', max: 99, desc: () => 'Gain <b>25</b> gold.' };
+JJ.FALLBACK_HEAL = { id: '_heal', name: 'Roast Chicken', kind: 'johnny', max: 99, desc: () => 'Heal <b>50</b> HP.' };

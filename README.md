@@ -108,6 +108,8 @@ Progress is saved in your browser's `localStorage`.
 
 ## Art credits
 
-Monster, boss, pickup and prop sprites are hand-picked from [Pixel Art Atlas — 1.4M Synthetic Sprites](https://huggingface.co/datasets/Angais/pixel-art-atlas-1.4m) by Angais, released under **CC0 1.0** (AI-generated 16×16 sprites). The selection is packed into `public/assets/sprites.png`, with the source row of every sprite listed in `public/assets/sprites-credits.txt`; `public/js/sprite-index.js` maps names to atlas cells. Johnny (and the Johnny designer), javelins, effects and the pixel-art ground are drawn procedurally, and all sound is synthesized.
+Monster, boss, pickup and prop sprites are hand-picked from [Pixel Art Atlas — 1.4M Synthetic Sprites](https://huggingface.co/datasets/Angais/pixel-art-atlas-1.4m) by Angais, released under **CC0 1.0** (AI-generated 16×16 sprites). The selection is packed into `public/assets/sprites.png`, with the source row of every sprite listed in `public/assets/sprites-credits.txt`; `public/js/sprite-index.js` maps names to atlas cells. Upgrade, Armory, menu and HUD icons come from the same dataset and are drawn as CSS sprites from the atlas. Johnny (and the Johnny designer), javelins, effects and the pixel-art ground are drawn procedurally, and all sound is synthesized.
+
+The UI font is [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans) (SIL Open Font License 1.1), self-hosted in `public/assets/fonts/` with its license.
 
 To change a sprite, edit its dataset row id in `tools/sprite-picks.json` and rebuild the atlas with `tools/build-atlas.py` (instructions at the top of the script).
