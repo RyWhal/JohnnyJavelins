@@ -4,7 +4,7 @@
 JJ.UI = class UI {
   constructor() {
     this.$ = (id) => document.getElementById(id);
-    this.screens = ['menu', 'howto', 'options', 'shop', 'levelup', 'chest', 'pause', 'gameover'];
+    this.screens = ['menu', 'howto', 'options', 'shop', 'levelup', 'chest', 'pause', 'gameover', 'designer'];
     this.returnTo = 'menu';
     this.shopTab = 'training';
     this.choices = [];
@@ -36,6 +36,24 @@ JJ.UI = class UI {
   bindButtons() {
     this.click('btn-play', () => this.startRun());
     this.click('btn-shop', () => this.openShop('menu'));
+    this.click('btn-designer', () => this.openDesigner());
+    this.click('btn-random-look', () => {
+      Object.assign(JJ.Save.data.johnny, JJ.randomLook());
+      JJ.Save.save();
+      this.renderDesigner();
+    });
+    this.click('btn-reset-look', () => {
+      const name = JJ.Save.data.johnny.name;
+      Object.assign(JJ.Save.data.johnny, JJ.defaultLook(), { name });
+      JJ.Save.save();
+      this.renderDesigner();
+    });
+    this.$('johnny-name').addEventListener('input', (ev) => {
+      JJ.Save.data.johnny.name = ev.target.value.slice(0, 16);
+      JJ.Save.save();
+    });
+    // Typing a name must not trigger game hotkeys.
+    this.$('johnny-name').addEventListener('keydown', (ev) => ev.stopPropagation());
     this.click('btn-howto', () => { this.returnTo = 'menu'; this.show('howto'); });
     this.click('btn-options', () => this.openOptions('menu'));
     document.querySelectorAll('[data-back]').forEach((b) =>
@@ -46,6 +64,7 @@ JJ.UI = class UI {
     );
     this.click('opt-aim', () => this.toggleSetting('aim'));
     this.click('opt-sound', () => this.toggleSetting('sound'));
+    this.click('opt-quality', () => this.toggleSetting('quality'));
     this.click('opt-dmg', () => this.toggleSetting('damageNumbers'));
     this.click('opt-shake', () => this.toggleSetting('shake'));
     document.querySelectorAll('.tab').forEach((t) =>
@@ -101,6 +120,12 @@ JJ.UI = class UI {
   }
 
   back() {
+    this.previewing = false;
+    const look = JJ.Save.data.johnny;
+    if (!look.name || !look.name.trim()) {
+      look.name = 'Johnny';
+      JJ.Save.save();
+    }
     if (this.returnTo === 'pause') this.show('pause');
     else if (this.returnTo === 'gameover-menu') this.openMenu();
     else this.openMenu();
@@ -130,7 +155,81 @@ JJ.UI = class UI {
     this.lastBuildKey = '';
     this.hudCache = {};
     this.game.start();
-    this.toast('Survive! Javelins are thrown automatically.', 3);
+    this.toast(`Survive, ${JJ.Save.data.johnny.name}! Javelins are thrown automatically.`, 3);
+  }
+
+  // ------------------------------------------------------------ designer
+  openDesigner() {
+    this.returnTo = 'menu';
+    this.show('designer');
+    this.$('johnny-name').value = JJ.Save.data.johnny.name;
+    this.renderDesigner();
+    this.previewing = true;
+    const canvas = this.$('johnny-preview');
+    const ctx = canvas.getContext('2d');
+    const start = performance.now();
+    const loop = (now) => {
+      if (!this.previewing) return;
+      this.drawPreview(ctx, canvas, (now - start) / 1000);
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
+  drawPreview(ctx, canvas, t) {
+    const look = JJ.Save.data.johnny;
+    const W = canvas.width;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const bg = ctx.createRadialGradient(W / 2, W / 2, 10, W / 2, W / 2, W / 2);
+    bg.addColorStop(0, '#5a8f48');
+    bg.addColorStop(1, '#2f5528');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, W);
+    const scale = W / 60;
+    ctx.setTransform(scale, 0, 0, scale, W / 2, W / 2 + scale * 2);
+    // Walk in place, glancing around, with a throw every couple of seconds.
+    const cycle = t % 3;
+    const face = cycle < 1.5 ? 0.35 : Math.PI - 0.35;
+    const moving = cycle % 1.5 < 1.1;
+    JJ.drawJohnny(ctx, look, 0, 0, { face, walk: t * 12, moving, time: t });
+    const throwK = Math.max(0, 1 - ((t * 1.3) % 2) * 4);
+    const pull = -6 * throwK;
+    JJ.drawJavelin(ctx, Math.cos(face) * (6 + pull), -4 + Math.sin(face) * (6 + pull), face, 0.9, '#dfe6ee', false, false, look);
+  }
+
+  renderDesigner() {
+    const L = JJ.LOOK, look = JJ.Save.data.johnny;
+    const swatches = (key, list) =>
+      `<div class="opt-row">${list
+        .map((c) => `<button class="swatch ${c === 'none' ? 'none' : ''} ${look[key] === c ? 'sel' : ''}" data-key="${key}" data-val="${c}" ${c === 'none' ? 'title="None"' : `style="background:${c}"`}></button>`)
+        .join('')}</div>`;
+    const chips = (key, list, dot) =>
+      `<div class="opt-row">${list
+        .map((o) => `<button class="chip ${look[key] === o.id ? 'sel' : ''}" data-key="${key}" data-val="${o.id}">${dot ? `<span class="dot" style="background:${o.id}"></span>` : ''}${o.name}</button>`)
+        .join('')}</div>`;
+    const group = (title, html) => `<div class="opt-group"><h3>${title}</h3>${html}</div>`;
+    this.$('designer-opts').innerHTML = [
+      group('Skin', swatches('skin', L.skin)),
+      group('Hairstyle', chips('hair', L.hair)),
+      group('Hair colour', swatches('hairColor', L.hairColor)),
+      group('Headgear', chips('hat', L.hat)),
+      group('Headgear colour', swatches('hatColor', L.hatColor)),
+      group('Face', chips('face', L.face)),
+      group('Tunic', swatches('tunic', L.tunic)),
+      group('Trousers', swatches('pants', L.pants)),
+      group('Cape', swatches('cape', L.cape)),
+      group('Javelin shaft', chips('shaft', L.shaft, true)),
+      group('Javelin fletching', swatches('fletch', L.fletch)),
+    ].join('');
+    this.$('designer-opts').querySelectorAll('[data-key]').forEach((b) =>
+      b.addEventListener('click', () => {
+        JJ.Audio.resume();
+        JJ.Audio.sfx.click();
+        look[b.dataset.key] = b.dataset.val;
+        JJ.Save.save();
+        this.renderDesigner();
+      }),
+    );
   }
 
   // ------------------------------------------------------------ options
@@ -143,6 +242,7 @@ JJ.UI = class UI {
   toggleSetting(key) {
     const s = JJ.Save.data.settings;
     if (key === 'aim') s.aim = s.aim === 'auto' ? 'mouse' : 'auto';
+    else if (key === 'quality') s.quality = s.quality === 'low' ? 'high' : 'low';
     else s[key] = !s[key];
     JJ.Audio.setEnabled(s.sound);
     JJ.Save.save();
@@ -153,6 +253,7 @@ JJ.UI = class UI {
     const s = JJ.Save.data.settings;
     this.$('opt-aim').textContent = s.aim === 'auto' ? '🎯 Auto' : '🖱️ Mouse';
     this.$('opt-sound').textContent = s.sound ? 'On' : 'Off';
+    this.$('opt-quality').textContent = s.quality === 'low' ? '⚡ Low' : '✨ High';
     this.$('opt-dmg').textContent = s.damageNumbers ? 'On' : 'Off';
     this.$('opt-shake').textContent = s.shake ? 'On' : 'Off';
   }
@@ -333,7 +434,8 @@ JJ.UI = class UI {
 
   showGameOver(r) {
     this.$('hud').classList.add('hidden');
-    this.$('go-title').textContent = r.won ? '🏆 VICTORY! The Dragon is slain!' : '💀 Johnny has fallen';
+    const name = JJ.Save.data.johnny.name || 'Johnny';
+    this.$('go-title').textContent = r.won ? `🏆 VICTORY! ${name} slew the Dragon!` : `💀 ${name} has fallen`;
     const legends = r.legendaries.map((id) => JJ.UPGRADES_BY_ID[id].icon + ' ' + JJ.UPGRADES_BY_ID[id].name).join(', ');
     this.$('go-stats').innerHTML = `
       <div>Survived</div><div>${JJ.formatTime(r.time)}</div>

@@ -32,11 +32,13 @@ JJ.Renderer = class Renderer {
       cx = game.player.x;
       cy = game.player.y;
     } else {
-      this.menuCam.x += dt * 30;
-      this.menuCam.y += dt * 12;
+      this.menuCam.x += dt * 40;
+      this.menuCam.y += dt * 15;
       cx = this.menuCam.x;
       cy = this.menuCam.y;
     }
+    this.cam = { x: cx, y: cy };
+    JJ.World.tick();
 
     let sx = 0, sy = 0;
     if (live && game.shake > 0 && JJ.Save.data.settings.shake) {
@@ -47,14 +49,29 @@ JJ.Renderer = class Renderer {
     const z = this.zoom * this.dpr;
     const ox = this.dpr * (this.w / 2 + sx) - cx * z;
     const oy = this.dpr * (this.h / 2 + sy) - cy * z;
+    this.worldTransform = [z, 0, 0, z, ox, oy];
     ctx.setTransform(z, 0, 0, z, ox, oy);
 
     // Mouse in world space (for mouse aim)
     const m = JJ.Input.mouse;
     game.mouseWorld = { x: (m.x - this.w / 2) / this.zoom + cx, y: (m.y - this.h / 2) / this.zoom + cy };
 
+    // Atmosphere: the biome under the camera plus a slow day -> night cycle.
+    const biome = JJ.BIOMES[JJ.World.biomeAt(cx, cy)];
+    const night = live ? JJ.clamp((game.t - 120) / 720, 0, 1) * 0.5 : 0.1;
+    const targetDark = JJ.clamp(biome.dark + night, 0, 0.82);
+    const k = 1 - Math.exp(-dt * 1.5);
+    this.dark = this.dark === undefined ? targetDark : JJ.lerp(this.dark, targetDark, k);
+    this.biome = biome;
+
+    this.hi = JJ.Save.data.settings.quality !== 'low';
+    this.lights = [];
     this.drawGround(cx, cy, time);
-    if (!live) return this.drawScreenFx(time);
+    if (this.hi) this.drawDecals();
+    if (!live) {
+      this.drawAtmosphere(time, dt, false);
+      return this.drawScreenFx(time);
+    }
 
     this.drawPickups(time);
     this.drawStrikeMarkers();
@@ -67,76 +84,288 @@ JJ.Renderer = class Renderer {
     this.drawFallingJavelins();
     this.drawEffects();
     this.drawParticles();
+    this.drawAtmosphere(time, dt, true);
+    ctx.setTransform(...this.worldTransform);
     this.drawTexts();
     this.drawScreenFx(time);
   }
 
   // ------------------------------------------------------------- ground
-  drawGround(cx, cy, time) {
+  drawGround(cx, cy) {
     const { ctx } = this;
     const g = this.game;
+    const S = JJ.CHUNK;
     const hw = g.viewW / 2 + 40, hh = g.viewH / 2 + 40;
-    ctx.fillStyle = '#3d6b35';
-    ctx.fillRect(cx - hw, cy - hh, hw * 2, hh * 2);
-    const T = 96;
-    const x0 = Math.floor((cx - hw) / T), x1 = Math.floor((cx + hw) / T);
-    const y0 = Math.floor((cy - hh) / T), y1 = Math.floor((cy + hh) / T);
+    const x0 = Math.floor((cx - hw) / S), x1 = Math.floor((cx + hw) / S);
+    const y0 = Math.floor((cy - hh) / S), y1 = Math.floor((cy + hh) / S);
     for (let ix = x0; ix <= x1; ix++) {
       for (let iy = y0; iy <= y1; iy++) {
-        const h = JJ.hash2(ix, iy);
-        const x = ix * T, y = iy * T;
-        // Large, soft patches of lighter / darker grass
-        const patch = JJ.hash2(Math.floor(ix / 4), Math.floor(iy / 4));
-        if (patch < 0.3) {
-          ctx.fillStyle = 'rgba(0,0,0,0.035)';
-          ctx.fillRect(x, y, T, T);
-        } else if (patch > 0.8) {
-          ctx.fillStyle = 'rgba(255,255,160,0.03)';
-          ctx.fillRect(x, y, T, T);
+        const c = JJ.World.getChunk(ix, iy);
+        // +1px overlap hides hairline seams between chunks
+        ctx.drawImage(c.canvas, ix * S, iy * S, S + 1, S + 1);
+        for (const l of c.lights) this.lights.push(l);
+      }
+    }
+  }
+
+  drawDecals() {
+    const { ctx } = this;
+    const g = this.game;
+    if (!g.decals) return;
+    for (const d of g.decals) {
+      const a = 0.45 * (1 - d.t / d.life);
+      ctx.fillStyle = d.color + a.toFixed(3) + ')';
+      for (const [bx, by, br] of d.blobs) {
+        ctx.beginPath();
+        ctx.ellipse(d.x + bx, d.y + by, br, br * 0.7, 0, 0, JJ.TAU);
+        ctx.fill();
+      }
+    }
+  }
+
+  // ------------------------------------------------------------- lighting
+  glowSprite(color) {
+    this.glowCache = this.glowCache || {};
+    let c = this.glowCache[color];
+    if (c) return c;
+    c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, color);
+    grad.addColorStop(0.35, color);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    this.glowCache[color] = c;
+    return c;
+  }
+
+  lightSprite() {
+    if (this._lightSprite) return this._lightSprite;
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    this._lightSprite = c;
+    return c;
+  }
+
+  collectLights(time) {
+    const g = this.game, s = g.stats, L = this.lights, p = g.player;
+    L.push({ x: p.x, y: p.y, r: 330 + (g.frenzyT > 0 ? 80 : 0), a: 1, color: '#ffcf8a' });
+    const tip = this.tipColor();
+    const glowy = s.burn || s.chain || s.zeus || s.explode;
+    // Sample javelins evenly; a few dozen lights read as "lots of glowing javelins".
+    const proj = g.projectiles;
+    const stride = Math.max(1, Math.ceil(proj.length / 40));
+    for (let i = 0; i < proj.length; i += stride) {
+      const j = proj[i];
+      if (j.dead) continue;
+      if (j.mega) L.push({ x: j.x, y: j.y, r: 200, a: 0.9, color: '#ffd34d' });
+      else if (glowy) L.push({ x: j.x, y: j.y, r: 55 * j.size * Math.min(2, Math.sqrt(stride)), a: 0.5, color: tip });
+    }
+    for (const o of g.orbitPos) L.push({ x: o.x, y: o.y, r: 70, a: 0.5, color: tip });
+    for (const f of g.effects) {
+      const k = f.t / f.life;
+      if (f.type === 'boom') L.push({ x: f.x, y: f.y, r: f.r * 2.6, a: 1 - k, color: '#ff8a3a' });
+      else if (f.type === 'bolt') {
+        const a = f.pts[f.pts.length - 1];
+        L.push({ x: a.x, y: a.y, r: 160, a: 1 - k, color: '#9fdcff' });
+      }
+    }
+    const shotStride = Math.max(1, Math.ceil(g.shots.length / 60));
+    for (let i = 0; i < g.shots.length; i += shotStride) {
+      const b = g.shots[i];
+      L.push({ x: b.x, y: b.y, r: b.kind === 'arrow' ? 30 : b.r * 6, a: 0.8, color: b.color });
+    }
+    let burning = 0;
+    for (const e of g.enemies) {
+      if (e.dead) continue;
+      if (e.boss) L.push({ x: e.x, y: e.y, r: e.r * 4, a: 0.6, color: e.type === 'lich' ? '#4dffd2' : '#ff5040' });
+      else if (e.burnT > 0 && burning++ < 25) L.push({ x: e.x, y: e.y, r: 45, a: 0.5, color: '#ff8a2a' });
+      else if (e.elite) L.push({ x: e.x, y: e.y, r: 90, a: 0.6, color: '#ffd34d' });
+    }
+    for (const k of g.pickups) if (k.type === 'chest') L.push({ x: k.x, y: k.y, r: 110, a: 0.8, color: '#ffd34d' });
+    for (const st of g.strikes) if (st.t > st.land * 0.6) L.push({ x: st.x, y: st.y, r: 70, a: 0.5, color: '#ffe680' });
+  }
+
+  drawLighting(time) {
+    const dark = this.dark;
+    if (dark < 0.02) return;
+    const { ctx } = this;
+    if (!this.hi) {
+      // Low quality: one cheap gradient instead of a per-light light map.
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      const r0 = 300 * this.zoom;
+      const grad = ctx.createRadialGradient(this.w / 2, this.h / 2, r0 * 0.3, this.w / 2, this.h / 2, r0 * 1.6);
+      grad.addColorStop(0, 'rgba(6,8,22,0)');
+      grad.addColorStop(1, `rgba(6,8,22,${dark})`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, this.w, this.h);
+      return;
+    }
+    const RES = 4; // light map at quarter resolution; it's all soft gradients
+    const lw = Math.ceil(this.w / RES), lh = Math.ceil(this.h / RES);
+    if (!this.lightCanvas) this.lightCanvas = document.createElement('canvas');
+    const lc = this.lightCanvas;
+    if (lc.width !== lw || lc.height !== lh) { lc.width = lw; lc.height = lh; }
+    const l = lc.getContext('2d');
+    l.setTransform(1, 0, 0, 1, 0, 0);
+    l.globalCompositeOperation = 'source-over';
+    l.clearRect(0, 0, lw, lh);
+    l.fillStyle = `rgba(6,8,22,${dark})`;
+    l.fillRect(0, 0, lw, lh);
+    l.globalCompositeOperation = 'destination-out';
+    const [z, , , , ox, oy] = this.worldTransform;
+    const sc = z / this.dpr / RES;
+    l.setTransform(sc, 0, 0, sc, ox / this.dpr / RES, oy / this.dpr / RES);
+    const spr = this.lightSprite();
+    const { x: cx, y: cy } = this.cam;
+    const hw = this.game.viewW / 2, hh = this.game.viewH / 2;
+    for (const li of this.lights) {
+      if (Math.abs(li.x - cx) > hw + li.r || Math.abs(li.y - cy) > hh + li.r) continue;
+      l.globalAlpha = Math.min(1, li.a);
+      l.drawImage(spr, li.x - li.r, li.y - li.r, li.r * 2, li.r * 2);
+    }
+    l.globalAlpha = 1;
+    l.globalCompositeOperation = 'source-over';
+
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.drawImage(lc, 0, 0, this.w, this.h);
+  }
+
+  drawGlows() {
+    const { ctx } = this;
+    ctx.setTransform(...this.worldTransform);
+    ctx.globalCompositeOperation = 'lighter';
+    const strength = this.dark * 0.4;
+    if (strength < 0.06 || !this.hi) {
+      ctx.globalCompositeOperation = 'source-over';
+      return;
+    }
+    let n = 0;
+    const { x: cx, y: cy } = this.cam;
+    const hw = this.game.viewW / 2, hh = this.game.viewH / 2;
+    for (const li of this.lights) {
+      if (Math.abs(li.x - cx) > hw + li.r || Math.abs(li.y - cy) > hh + li.r) continue;
+      if (n++ > 45) break;
+      if (!li.color || li.r > 300) continue;
+      ctx.globalAlpha = Math.min(1, li.a) * strength;
+      const r = li.r * 0.6;
+      ctx.drawImage(this.glowSprite(li.color), li.x - r, li.y - r, r * 2, r * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Biome tint, darkness, glows and weather.
+  drawAtmosphere(time, dt, live) {
+    const { ctx } = this;
+    if (this.biome.tint) {
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      ctx.fillStyle = this.biome.tint;
+      ctx.fillRect(0, 0, this.w, this.h);
+    }
+    if (live && this.hi) this.collectLights(time);
+    this.updateAmbient(dt);
+    this.drawAmbient(time, false);
+    this.drawLighting(time);
+    this.drawGlows();
+    this.drawAmbient(time, true);
+  }
+
+  // ------------------------------------------------------------- weather
+  updateAmbient(dt) {
+    this.ambient = this.ambient || [];
+    const A = this.ambient;
+    const kind = this.biome.ambient;
+    let want = { snow: 160, embers: 70, fireflies: 45, dust: 50, leaves: 26, mist: 14, fog: 16 }[kind] || 0;
+    if (!this.hi) want = Math.floor(want / 3);
+    const g = this.game;
+    const hw = g.viewW / 2 + 60, hh = g.viewH / 2 + 60;
+    const { x: cx, y: cy } = this.cam;
+    let count = 0;
+    for (const q of A) if (q.kind === kind && !q.dead) count++;
+    for (let n = 0; count < want && n < 8; n++, count++) {
+      const q = { kind, t: 0, x: cx + JJ.rand(-hw, hw), y: cy + JJ.rand(-hh, hh), seed: Math.random() * 100 };
+      switch (kind) {
+        case 'snow': Object.assign(q, { vx: JJ.rand(-30, -10), vy: JJ.rand(40, 80), size: JJ.rand(1.5, 3.5), life: JJ.rand(6, 12) }); break;
+        case 'embers': Object.assign(q, { vx: JJ.rand(-15, 15), vy: JJ.rand(-60, -25), size: JJ.rand(1.5, 3), life: JJ.rand(2, 5) }); break;
+        case 'fireflies': Object.assign(q, { vx: 0, vy: 0, size: 2.2, life: JJ.rand(4, 9) }); break;
+        case 'dust': Object.assign(q, { vx: JJ.rand(60, 120), vy: JJ.rand(-10, 10), size: JJ.rand(1, 2.5), life: JJ.rand(3, 6) }); break;
+        case 'leaves': Object.assign(q, { vx: JJ.rand(20, 50), vy: JJ.rand(15, 35), size: JJ.rand(3, 5), life: JJ.rand(5, 10) }); break;
+        case 'mist':
+        case 'fog': Object.assign(q, { vx: JJ.rand(8, 20), vy: JJ.rand(-4, 4), size: JJ.rand(90, 180), life: JJ.rand(8, 14) }); break;
+      }
+      A.push(q);
+    }
+    for (const q of A) {
+      q.t += dt;
+      if (q.kind === 'fireflies') {
+        q.vx += Math.sin(q.t * 1.7 + q.seed) * 30 * dt;
+        q.vy += Math.cos(q.t * 1.3 + q.seed) * 30 * dt;
+      }
+      q.x += q.vx * dt;
+      q.y += q.vy * dt;
+      if (q.t > q.life || Math.abs(q.x - cx) > hw + 200 || Math.abs(q.y - cy) > hh + 200) q.dead = true;
+    }
+    JJ.compact(A);
+  }
+
+  drawAmbient(time, glowing) {
+    const { ctx } = this;
+    const A = this.ambient;
+    if (!A || !A.length) return;
+    ctx.setTransform(...this.worldTransform);
+    for (const q of A) {
+      const fade = Math.min(1, q.t / 0.8, (q.life - q.t) / 0.8);
+      const isGlow = q.kind === 'embers' || q.kind === 'fireflies';
+      if (isGlow !== glowing) continue;
+      switch (q.kind) {
+        case 'snow':
+          ctx.fillStyle = `rgba(255,255,255,${0.85 * fade})`;
+          ctx.fillRect(q.x, q.y, q.size, q.size);
+          break;
+        case 'dust':
+          ctx.fillStyle = `rgba(240,215,160,${0.5 * fade})`;
+          ctx.fillRect(q.x, q.y, q.size * 4, q.size * 0.7);
+          break;
+        case 'leaves':
+          ctx.save();
+          ctx.translate(q.x, q.y);
+          ctx.rotate(q.t * 2 + q.seed);
+          ctx.fillStyle = q.seed > 50 ? `rgba(220,150,50,${fade})` : `rgba(120,170,60,${fade})`;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, q.size, q.size * 0.45, 0, 0, JJ.TAU);
+          ctx.fill();
+          ctx.restore();
+          break;
+        case 'mist':
+        case 'fog':
+          ctx.globalAlpha = (q.kind === 'fog' ? 0.16 : 0.12) * fade;
+          ctx.drawImage(this.glowSprite(q.kind === 'fog' ? '#c8d0e8' : '#cfe8c8'), q.x - q.size, q.y - q.size * 0.6, q.size * 2, q.size * 1.2);
+          ctx.globalAlpha = 1;
+          break;
+        case 'embers': {
+          const fl = 0.6 + 0.4 * Math.sin(time * 12 + q.seed);
+          ctx.fillStyle = `rgba(255,${120 + Math.floor(q.seed)},40,${fade * fl})`;
+          ctx.fillRect(q.x, q.y, q.size, q.size);
+          break;
         }
-        const dx = x + JJ.hash2(ix + 7, iy) * (T - 20) + 10;
-        const dy = y + JJ.hash2(ix, iy + 13) * (T - 20) + 10;
-        if (h < 0.35) {
-          ctx.strokeStyle = '#4f8a43';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          for (let k = -1; k <= 1; k++) {
-            ctx.moveTo(dx + k * 4, dy);
-            ctx.lineTo(dx + k * 6, dy - 9 - Math.abs(k) * -2);
-          }
-          ctx.stroke();
-        } else if (h < 0.42) {
-          const colors = ['#f6e05e', '#f78fb3', '#ffffff', '#9ad0ff'];
-          ctx.fillStyle = colors[Math.floor(JJ.hash2(ix, iy + 99) * 4)];
-          for (let k = 0; k < 3; k++) {
-            ctx.beginPath();
-            ctx.arc(dx + k * 9 - 9, dy + (k % 2) * 6, 2.5, 0, JJ.TAU);
-            ctx.fill();
-          }
-        } else if (h < 0.45) {
-          ctx.fillStyle = '#7d7f7a';
-          ctx.beginPath();
-          ctx.ellipse(dx, dy, 11, 8, 0, 0, JJ.TAU);
-          ctx.fill();
-          ctx.fillStyle = '#9a9c96';
-          ctx.beginPath();
-          ctx.ellipse(dx - 3, dy - 2, 6, 4, 0, 0, JJ.TAU);
-          ctx.fill();
-        } else if (h < 0.46) {
-          // Old javelin stuck in the ground. Johnny was here before.
-          ctx.strokeStyle = '#8b6a3e';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.moveTo(dx, dy);
-          ctx.lineTo(dx + 10, dy - 26);
-          ctx.stroke();
-        } else if (h < 0.47) {
-          ctx.fillStyle = '#c94a3a';
-          ctx.beginPath();
-          ctx.arc(dx, dy - 4, 6, Math.PI, 0);
-          ctx.fill();
-          ctx.fillStyle = '#eee';
-          ctx.fillRect(dx - 2, dy - 4, 4, 6);
+        case 'fireflies': {
+          const fl = Math.max(0, Math.sin(time * 3 + q.seed));
+          ctx.globalAlpha = fade * fl;
+          ctx.drawImage(this.glowSprite('#d8ff6a'), q.x - 10, q.y - 10, 20, 20);
+          ctx.fillStyle = '#f4ffb0';
+          ctx.fillRect(q.x - 1, q.y - 1, 2, 2);
+          ctx.globalAlpha = 1;
+          break;
         }
       }
     }
@@ -148,56 +377,7 @@ JJ.Renderer = class Renderer {
     const g = this.game, p = g.player;
     if (p.inv > 0 && g.state === 'playing' && Math.floor(time * 20) % 2 === 0 && !g.won) return;
     const x = p.x, y = p.y;
-    const faceRight = Math.cos(p.face) >= 0;
-    const bob = p.moving ? Math.sin(p.walk) * 1.5 : 0;
-
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(x, y + 14, 12, 5, 0, 0, JJ.TAU);
-    ctx.fill();
-
-    // legs
-    ctx.fillStyle = '#5b3a1e';
-    const leg = p.moving ? Math.sin(p.walk) * 4 : 0;
-    ctx.fillRect(x - 6, y + 4 + leg * 0.5, 4, 10 - leg * 0.5);
-    ctx.fillRect(x + 2, y + 4 - leg * 0.5, 4, 10 + leg * 0.5);
-
-    // tunic
-    ctx.fillStyle = '#2f7fc1';
-    ctx.beginPath();
-    ctx.ellipse(x, y + bob, 10, 11, 0, 0, JJ.TAU);
-    ctx.fill();
-    ctx.fillStyle = '#8b5a2b';
-    ctx.fillRect(x - 10, y + 3 + bob, 20, 3);
-
-    // head
-    const hy = y - 13 + bob;
-    ctx.fillStyle = '#f2c79a';
-    ctx.beginPath();
-    ctx.arc(x, hy, 8, 0, JJ.TAU);
-    ctx.fill();
-    // hair
-    ctx.fillStyle = '#6b3d1a';
-    ctx.beginPath();
-    ctx.arc(x, hy - 2, 8, Math.PI * 1.05, Math.PI * 1.95);
-    ctx.fill();
-    // headband + tails
-    ctx.fillStyle = '#d6322b';
-    ctx.fillRect(x - 8, hy - 4, 16, 3);
-    const tailX = faceRight ? x - 8 : x + 8;
-    const sway = Math.sin(time * 10) * 2;
-    ctx.beginPath();
-    ctx.moveTo(tailX, hy - 4);
-    ctx.lineTo(tailX + (faceRight ? -9 : 9), hy - 1 + sway);
-    ctx.lineTo(tailX + (faceRight ? -8 : 8), hy + 2 + sway);
-    ctx.closePath();
-    ctx.fill();
-    // eyes
-    ctx.fillStyle = '#222';
-    const ex = Math.cos(p.face) * 3;
-    const ey = Math.sin(p.face) * 1.5;
-    ctx.fillRect(x - 3.5 + ex, hy - 1 + ey, 2, 2.5);
-    ctx.fillRect(x + 1.5 + ex, hy - 1 + ey, 2, 2.5);
+    JJ.drawJohnny(ctx, JJ.Save.data.johnny, x, y, { face: p.face, walk: p.walk, moving: p.moving, time });
 
     // held javelin
     const pull = p.throwAnim > 0 ? -10 * (p.throwAnim / 0.15) : 0;
@@ -232,43 +412,7 @@ JJ.Renderer = class Renderer {
   }
 
   javelinShape(x, y, ang, size, tip, trail, mega) {
-    const { ctx } = this;
-    const len = 30 * size;
-    const c = Math.cos(ang), s = Math.sin(ang);
-    const tx = x + c * len * 0.5, ty = y + s * len * 0.5; // tip
-    const bx = x - c * len * 0.5, by = y - s * len * 0.5; // butt
-    if (trail) {
-      ctx.strokeStyle = mega ? 'rgba(255,220,90,0.35)' : 'rgba(255,255,255,0.18)';
-      ctx.lineWidth = 3 * size;
-      ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.lineTo(bx - c * len * 0.7, by - s * len * 0.7);
-      ctx.stroke();
-    }
-    // shaft
-    ctx.strokeStyle = mega ? '#ffcf3f' : '#c9a066';
-    ctx.lineWidth = 2.6 * size;
-    ctx.beginPath();
-    ctx.moveTo(bx, by);
-    ctx.lineTo(tx - c * 6 * size, ty - s * 6 * size);
-    ctx.stroke();
-    // tip
-    const px = -s, py = c;
-    ctx.fillStyle = tip;
-    ctx.beginPath();
-    ctx.moveTo(tx + c * 3 * size, ty + s * 3 * size);
-    ctx.lineTo(tx - c * 7 * size + px * 3.5 * size, ty - s * 7 * size + py * 3.5 * size);
-    ctx.lineTo(tx - c * 7 * size - px * 3.5 * size, ty - s * 7 * size - py * 3.5 * size);
-    ctx.closePath();
-    ctx.fill();
-    // fletching
-    ctx.fillStyle = mega ? '#ff4a2a' : '#d6322b';
-    ctx.beginPath();
-    ctx.moveTo(bx + c * 7 * size, by + s * 7 * size);
-    ctx.lineTo(bx + px * 4 * size, by + py * 4 * size);
-    ctx.lineTo(bx - px * 4 * size, by - py * 4 * size);
-    ctx.closePath();
-    ctx.fill();
+    JJ.drawJavelin(this.ctx, x, y, ang, size, tip, trail, mega, JJ.Save.data.johnny);
   }
 
   drawProjectiles() {
@@ -343,6 +487,22 @@ JJ.Renderer = class Renderer {
   drawShots(time) {
     const { ctx } = this;
     for (const b of this.game.shots) {
+      if (b.kind === 'arrow') {
+        const c = Math.cos(b.ang), sn = Math.sin(b.ang);
+        ctx.strokeStyle = '#8b6a3e';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(b.x - c * 16, b.y - sn * 16);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+        ctx.fillStyle = '#d8d8d8';
+        ctx.beginPath();
+        ctx.moveTo(b.x + c * 5, b.y + sn * 5);
+        ctx.lineTo(b.x - c * 2 - sn * 3, b.y - sn * 2 + c * 3);
+        ctx.lineTo(b.x - c * 2 + sn * 3, b.y - sn * 2 - c * 3);
+        ctx.fill();
+        continue;
+      }
       ctx.fillStyle = b.color;
       ctx.globalAlpha = 0.35;
       ctx.beginPath();

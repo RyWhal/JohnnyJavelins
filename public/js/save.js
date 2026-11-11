@@ -34,7 +34,8 @@ JJ.Save = (() => {
     meta: {},
     unlocks: {},
     stats: { runs: 0, wins: 0, bestTime: 0, bestLevel: 0, totalKills: 0, bossKills: 0, legendaries: {} },
-    settings: { aim: 'auto', sound: true, damageNumbers: true, shake: true },
+    settings: { aim: 'auto', sound: true, damageNumbers: true, shake: true, quality: 'high' },
+    johnny: JJ.defaultLook(),
   });
 
   let data = fresh();
@@ -51,6 +52,7 @@ JJ.Save = (() => {
           stats: { ...base.stats, ...(parsed.stats || {}) },
           settings: { ...base.settings, ...(parsed.settings || {}) },
           meta: parsed.meta || {},
+          johnny: { ...base.johnny, ...(parsed.johnny || {}) },
           unlocks: parsed.unlocks || {},
         };
       }

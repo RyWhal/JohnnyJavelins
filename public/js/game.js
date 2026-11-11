@@ -63,6 +63,16 @@ JJ.Game = class Game {
     this.hurtFlash = 0;
     this.legendaries = [];
     this.won = false;
+    this.director = 1;
+    this.directorTimer = 0;
+    this.dpsAcc = 0;
+    this.dpsEMA = 0;
+    this.bossDmgAcc = 0;
+    this.bossDpsEMA = 0;
+    this.lastBossDps = 0;
+    this.decals = [];
+    this.biome = 'meadow';
+    this.biomeTimer = 0;
   }
 
   xpFor(level) {
@@ -133,6 +143,19 @@ JJ.Game = class Game {
     const s = this.stats;
 
     this.updatePlayer(dt);
+    this.biomeTimer -= dt;
+    if (this.biomeTimer <= 0) {
+      this.biomeTimer = 0.5;
+      const b = JJ.World.biomeAt(p.x, p.y);
+      if (b !== this.biome) {
+        this.biome = b;
+        this.ui.toast(`Entering ${JJ.BIOMES[b].name}`, 2.5);
+      }
+    }
+    for (const dc of this.decals) {
+      dc.t += dt;
+      if (dc.t > dc.life) dc.dead = true;
+    }
 
     // Spatial index of monsters for this frame
     this.grid.clear();
@@ -157,6 +180,7 @@ JJ.Game = class Game {
     JJ.compact(this.texts);
     JJ.compact(this.strikes);
     JJ.compact(this.vortexes);
+    JJ.compact(this.decals);
     this.bosses = this.bosses.filter((b) => !b.dead);
 
     if (p.hp < s.maxHp) p.hp = Math.min(s.maxHp, p.hp + s.regen * dt);
@@ -193,34 +217,95 @@ JJ.Game = class Game {
     return { x: p.x + Math.cos(a) * d, y: p.y + Math.sin(a) * d };
   }
 
+  // Base time scaling for regular monsters (the director multiplies on top).
+  timeHpScale() {
+    const min = this.t / 60;
+    return 1 + 0.12 * min + 0.13 * min * min;
+  }
+
   spawnEnemy(type, x, y, opts = {}) {
     const d = JJ.ENEMIES[type];
     const min = this.t / 60;
-    const hpScale = d.boss ? 1 + this.t / 1800 : 1 + 0.25 * min + 0.12 * min * min;
     const elite = !!opts.elite;
+    const dir = this.director;
+    let hp;
+    if (d.boss) {
+      // Bosses: a floor from their base HP, raised to match Johnny's real
+      // damage output so the fight lasts roughly `d.fight` seconds.
+      const floor = d.hp * (1 + this.t / 240) * Math.pow(dir, 0.6);
+      // Size the fight from the damage Johnny has actually been dealing to
+      // bosses (adapts to how he plays); before any boss data, assume bosses
+      // soak ~5% of total damage (the rest is splash on the horde).
+      // Scale by how much stronger Johnny has grown since that was measured.
+      const growth = this.lastBossDps > 0 ? JJ.clamp(this.dpsEMA / this.lastBossDps, 1, 4) : 1;
+      const est = this.bossDpsEMA > 0 ? this.bossDpsEMA * growth * 1.2 : this.dpsEMA * 0.05;
+      hp = Math.max(floor, est * d.fight);
+    } else {
+      hp = d.hp * this.timeHpScale() * dir * (elite ? 10 : 1);
+    }
+    const dmgScale = (1 + min * 0.07) * Math.min(1.6, Math.pow(dir, 0.25));
     const e = {
-      id: this.nextId++, type, x, y,
+      id: this.nextId++, type, x, y, draw: d.draw,
       r: d.r * (elite ? 1.5 : 1),
-      hp: d.hp * hpScale * (elite ? 10 : 1),
+      hp,
       speed: d.speed * (elite ? 0.95 : 1) * (d.boss ? 1 : JJ.rand(0.9, 1.1)),
-      dmg: d.dmg * (elite ? 1.5 : 1),
-      xp: d.xp * (elite ? 10 : 1),
-      color: d.color, boss: !!d.boss, ranged: !!d.ranged, elite,
+      dmg: d.dmg * (elite ? 1.5 : 1) * dmgScale,
+      xp: d.xp * (elite ? 10 : 1) * Math.pow(dir, 0.25),
+      color: d.color, boss: d.boss || false, ranged: d.ranged || null, elite,
+      shotDmg: (d.shot || (d.ranged && d.ranged.dmg) || 0) * dmgScale,
       kx: 0, ky: 0, flash: 0,
       slowT: 0, slowAmt: 0, frozenT: 0,
       burnT: 0, burnDps: 0, burnTick: 0,
       orbitCD: 0, vortexCD: 0,
-      aiT: JJ.rand(1, 3), aiT2: 5, charging: 0, chargeDir: 0,
+      aiT: JJ.rand(1, 3), chargeT: 0, windupT: 0, chargeDir: 0, chargeSpd: 0,
+      spiralT: 0, spiralAcc: 0, spiralA: 0, spiral: null,
       dash: null,
+      invuln: !!d.boss,
     };
+    if (d.patterns) e.timers = d.patterns.map((pt, i) => pt.every * (0.5 + 0.2 * i));
     e.maxHp = e.hp;
     this.enemies.push(e);
     if (e.boss) this.bosses.push(e);
     return e;
   }
 
+  // Adaptive difficulty: if Johnny keeps the screen clear, monsters get
+  // tougher until the horde starts to build up again.
+  updateDirector(dt) {
+    this.directorTimer += dt;
+    if (this.directorTimer < 1) return;
+    this.directorTimer -= 1;
+    this.dpsEMA = this.dpsEMA * 0.88 + this.dpsAcc * 0.12;
+    this.dpsAcc = 0;
+    // Boss damage rate, only sampled while a boss is actually fightable.
+    if (this.bosses.some((b) => !b.dead && !b.invuln)) {
+      this.bossDpsEMA = this.bossDpsEMA > 0 ? this.bossDpsEMA * 0.85 + this.bossDmgAcc * 0.15 : this.bossDmgAcc;
+      this.lastBossDps = this.dpsEMA;
+    }
+    this.bossDmgAcc = 0;
+    if (this.t < 150) return;
+    const min = this.t / 60;
+    let alive = 0;
+    for (const e of this.enemies) if (!e.dead && !e.boss) alive++;
+    const target = Math.min(JJ.ENEMY_CAP * 0.8, 30 + 24 * min);
+    const ratio = alive / target;
+    if (ratio < 0.35) this.director *= 1.02;
+    else if (ratio < 0.6) this.director *= 1.007;
+    else if (ratio > 1) this.director *= 0.98;
+    this.director = JJ.clamp(this.director, 1, 500);
+  }
+
+  pickSpawnType() {
+    const wave = JJ.waveAt(this.t);
+    const fav = JJ.BIOMES[this.biome].favored;
+    const w = {};
+    for (const k in wave.types) w[k] = wave.types[k] * (fav[k] || 1);
+    return JJ.weightedKey(w);
+  }
+
   updateSpawning(dt) {
     const min = this.t / 60;
+    this.updateDirector(dt);
 
     // Scripted events
     while (this.eventIdx < JJ.EVENTS.length && this.t >= JJ.EVENTS[this.eventIdx].t) {
@@ -230,21 +315,19 @@ JJ.Game = class Game {
     // Elites
     this.eliteTimer -= dt;
     if (this.eliteTimer <= 0) {
-      this.eliteTimer = 50;
-      const wave = JJ.waveAt(this.t);
+      this.eliteTimer = 40;
       const pt = this.spawnPoint(true);
-      this.spawnEnemy(JJ.weightedKey(wave.types), pt.x, pt.y, { elite: true });
+      this.spawnEnemy(this.pickSpawnType(), pt.x, pt.y, { elite: true });
     }
 
-    // Steady trickle, ramping up hard
-    const rate = 0.8 + 0.8 * min + 0.1 * min * min;
+    // Steady trickle, ramping up hard (and a bit harder when Johnny is cruising)
+    const rate = (0.8 + 0.8 * min + 0.1 * min * min) * Math.min(1.6, Math.pow(this.director, 0.15));
     this.spawnTimer -= dt;
     while (this.spawnTimer <= 0) {
       this.spawnTimer += 1 / rate;
       if (this.enemies.length >= JJ.ENEMY_CAP) continue;
-      const wave = JJ.waveAt(this.t);
       const pt = this.spawnPoint(Math.random() < 0.35);
-      this.spawnEnemy(JJ.weightedKey(wave.types), pt.x, pt.y);
+      this.spawnEnemy(this.pickSpawnType(), pt.x, pt.y);
     }
   }
 
@@ -268,11 +351,13 @@ JJ.Game = class Game {
         e.dash = { vx: dirX * 300, vy: dirY * 300, t: 7 };
       }
     } else if (ev.type === 'boss') {
-      const pt = this.spawnPoint();
-      const b = this.spawnEnemy(ev.enemy, pt.x, pt.y);
-      this.ui.toast(`⚠️ ${JJ.ENEMIES[ev.enemy].name} approaches! ⚠️`, 4);
+      // Spawn just off screen; bosses are shielded until they're in view.
+      const a = Math.random() * JJ.TAU;
+      const b = this.spawnEnemy(ev.enemy, p.x + Math.cos(a) * this.viewW * 0.6, p.y + Math.sin(a) * this.viewH * 0.6);
+      const major = JJ.ENEMIES[ev.enemy].boss === 'major';
+      this.ui.toast(`${major ? '⚠️ ' : '👑 '}${JJ.ENEMIES[ev.enemy].name} approaches!${major ? ' ⚠️' : ''}`, 4);
       JJ.Audio.sfx.boss();
-      this.shake = 12;
+      this.shake = major ? 12 : 6;
       return b;
     }
   }
@@ -281,7 +366,7 @@ JJ.Game = class Game {
   nearestEnemy(x, y, maxD, exclude) {
     let best = null, bd = maxD * maxD;
     for (const e of this.enemies) {
-      if (e.dead || (exclude && exclude.has(e.id))) continue;
+      if (e.dead || e.invuln || (exclude && exclude.has(e.id))) continue;
       const d = JJ.dist2(x, y, e.x, e.y);
       if (d < bd) { bd = d; best = e; }
     }
@@ -291,7 +376,7 @@ JJ.Game = class Game {
   nearestInGrid(x, y, maxD, exclude) {
     let best = null, bd = maxD * maxD;
     this.grid.each(x, y, maxD, (e) => {
-      if (e.dead || (exclude && exclude.has(e.id))) return;
+      if (e.dead || e.invuln || (exclude && exclude.has(e.id))) return;
       const d = JJ.dist2(x, y, e.x, e.y);
       if (d < bd) { bd = d; best = e; }
     });
@@ -471,7 +556,7 @@ JJ.Game = class Game {
       const hr = 7 * j.size;
       j.redirected = false;
       this.grid.each(j.x, j.y, hr, (e) => {
-        if (e.dead || j.hit.has(e.id)) return;
+        if (e.dead || e.invuln || j.hit.has(e.id)) return;
         const rr = e.r + hr;
         if (JJ.dist2(j.x, j.y, e.x, e.y) < rr * rr) {
           this.hitEnemy(j, e);
@@ -547,6 +632,12 @@ JJ.Game = class Game {
 
   damageEnemy(e, dmg, crit, kx = 0, ky = 0, color) {
     if (e.dead) return;
+    if (e.invuln) {
+      e.flash = 0.03;
+      return;
+    }
+    this.dpsAcc += Math.min(dmg, e.hp);
+    if (e.boss) this.bossDmgAcc += Math.min(dmg, e.hp);
     e.hp -= dmg;
     e.flash = 0.07;
     if (kx || ky) {
@@ -617,7 +708,7 @@ JJ.Game = class Game {
   callRain(n) {
     const p = this.player;
     const hw = this.viewW / 2, hh = this.viewH / 2;
-    const visible = this.enemies.filter((e) => !e.dead && Math.abs(e.x - p.x) < hw && Math.abs(e.y - p.y) < hh);
+    const visible = this.enemies.filter((e) => !e.dead && !e.invuln && Math.abs(e.x - p.x) < hw && Math.abs(e.y - p.y) < hh);
     for (let i = 0; i < n; i++) {
       let x, y;
       if (visible.length) {
@@ -687,9 +778,9 @@ JJ.Game = class Game {
   // ------------------------------------------------------------------ monsters
   updateEnemies(dt) {
     const p = this.player;
-    const dmgScale = 1 + (this.t / 60) * 0.07;
     const farD = Math.max(this.viewW, this.viewH) * 0.9 + 250;
     const decay = Math.exp(-9 * dt);
+    const hw = this.viewW / 2, hh = this.viewH / 2;
 
     for (const e of this.enemies) {
       if (e.dead) continue;
@@ -709,6 +800,12 @@ JJ.Game = class Game {
       const dx = p.x - e.x, dy = p.y - e.y;
       const dist = Math.hypot(dx, dy) || 1;
       const nx = dx / dist, ny = dy / dist;
+
+      // Bosses can't be hurt until they've walked on screen.
+      if (e.invuln && Math.abs(dx) < hw - e.r * 0.5 && Math.abs(dy) < hh - e.r * 0.5) {
+        e.invuln = false;
+        this.effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r * 3, t: 0, life: 0.5, color: '#8fd0ff' });
+      }
 
       // Relocate stragglers so the pressure stays on
       if (!e.boss && dist > farD && !e.dash) {
@@ -733,13 +830,15 @@ JJ.Game = class Game {
           vx = v.x;
           vy = v.y;
         } else if (e.ranged) {
-          const want = dist > 280 ? 1 : dist < 200 ? -0.7 : 0;
-          vx = nx * spd * want;
-          vy = ny * spd * want;
+          const R = e.ranged;
+          const want = dist > R.keep[1] ? 1 : dist < R.keep[0] ? -0.7 : 0;
+          const strafe = Math.sin(this.t * 0.8 + e.id) * 0.5;
+          vx = (nx * want - ny * strafe) * spd;
+          vy = (ny * want + nx * strafe) * spd;
           e.aiT -= dt;
-          if (e.aiT <= 0 && dist < 520) {
-            e.aiT = 2.6;
-            this.fireShot(e.x, e.y, Math.atan2(dy, dx), 210, 7, e.dmg * dmgScale, '#e050ff');
+          if (e.aiT <= 0 && dist < 560) {
+            e.aiT = R.every * JJ.rand(0.85, 1.15);
+            this.fireShot(e.x, e.y, Math.atan2(dy, dx), R.spd, R.r, e.shotDmg, R.color, R.kind);
           }
         } else if (e.type === 'bat') {
           const wob = Math.sin(this.t * 6 + e.id) * 0.6;
@@ -748,6 +847,20 @@ JJ.Game = class Game {
         } else {
           vx = nx * spd;
           vy = ny * spd;
+          // Wolves lunge when close.
+          if (e.type === 'wolf') {
+            e.aiT -= dt;
+            if (e.lungeT > 0) {
+              // Crouch before lunging: a readable tell.
+              vx = vy = 0;
+              e.lungeT -= dt;
+              if (e.lungeT <= 0) e.dash = { vx: Math.cos(e.chargeDir) * 330, vy: Math.sin(e.chargeDir) * 330, t: 0.35 };
+            } else if (e.aiT <= 0 && dist < 170 && dist > 70) {
+              e.aiT = JJ.rand(3, 4.5);
+              e.lungeT = 0.35;
+              e.chargeDir = Math.atan2(dy, dx);
+            }
+          }
         }
         if (e.type === 'troll') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.01 * dt);
       }
@@ -781,74 +894,125 @@ JJ.Game = class Game {
 
       // Contact damage
       const rr = e.r + p.r - 4;
-      if (JJ.dist2(e.x, e.y, p.x, p.y) < rr * rr) this.hurtPlayer(e.dmg * dmgScale);
+      if (JJ.dist2(e.x, e.y, p.x, p.y) < rr * rr) this.hurtPlayer(e.dmg);
     }
   }
 
+  // Data-driven boss behaviour: each pattern in the boss definition runs on
+  // its own timer. Below 50% HP bosses enrage and attack faster.
   bossAI(e, dt, nx, ny, dist, spd) {
-    const dmgScale = 1 + (this.t / 60) * 0.05;
-    e.aiT -= dt;
-    e.aiT2 -= dt;
-    const toward = Math.atan2(ny, nx);
-    if (e.type === 'ogre') {
-      if (e.charging > 0) {
-        e.charging -= dt;
-        if (e.charging <= 0) e.aiT = 3.5;
-        return { x: Math.cos(e.chargeDir) * 420, y: Math.sin(e.chargeDir) * 420 };
+    const d = JJ.ENEMIES[e.type];
+    const enraged = e.hp < e.maxHp * 0.5;
+    if (d.regen) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * d.regen * dt);
+
+    if (e.spiral) {
+      const sp = e.spiral;
+      e.spiralT -= dt;
+      e.spiralAcc += dt * sp.rate;
+      while (e.spiralAcc >= 1) {
+        e.spiralAcc -= 1;
+        e.spiralA += 0.32;
+        const arms = sp.arms || 2;
+        for (let k = 0; k < arms; k++) this.fireShot(e.x, e.y, e.spiralA + (k / arms) * JJ.TAU, sp.spd, 8, e.shotDmg, sp.color);
       }
-      if (e.aiT <= 0.7 && e.aiT > 0) return { x: 0, y: 0 }; // wind up
-      if (e.aiT <= 0) {
-        e.charging = 0.9;
-        e.chargeDir = toward;
+      if (e.spiralT <= 0) e.spiral = null;
+    }
+
+    if (e.windupT > 0) {
+      e.windupT -= dt;
+      if (e.windupT <= 0) {
+        e.chargeT = e.chargePat.dur;
         this.shake = Math.max(this.shake, 4);
       }
-      if (e.aiT2 <= 0) {
-        e.aiT2 = 6;
-        for (let i = 0; i < 12; i++) this.fireShot(e.x, e.y, (i / 12) * JJ.TAU, 180, 10, 14 * dmgScale, '#c8a060');
-      }
-      return { x: nx * spd, y: ny * spd };
+      return { x: 0, y: 0 };
     }
-    if (e.type === 'lich') {
-      if (e.aiT <= 0) {
-        e.aiT = 2.0;
-        const off = Math.random() * JJ.TAU;
-        for (let i = 0; i < 12; i++) this.fireShot(e.x, e.y, off + (i / 12) * JJ.TAU, 170, 8, 14 * dmgScale, '#4dffd2');
-      }
-      if (e.aiT2 <= 0) {
-        e.aiT2 = 7;
-        for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * JJ.TAU;
-          this.spawnEnemy('skeleton', e.x + Math.cos(a) * 70, e.y + Math.sin(a) * 70);
-        }
-        this.effects.push({ type: 'ring', x: e.x, y: e.y, r: 90, t: 0, life: 0.5, color: '#4dffd2' });
-      }
-      const want = dist > 340 ? 1 : dist < 260 ? -1 : 0.2;
-      return { x: nx * spd * want - ny * spd * 0.5, y: ny * spd * want + nx * spd * 0.5 };
+    if (e.chargeT > 0) {
+      e.chargeT -= dt;
+      if (e.chargeT <= 0 && e.chargePat.then) this.bossPattern(e, e.chargePat.then);
+      return { x: Math.cos(e.chargeDir) * e.chargeSpd, y: Math.sin(e.chargeDir) * e.chargeSpd };
     }
-    if (e.type === 'dragon') {
-      const enraged = e.hp < e.maxHp * 0.5;
-      if (e.aiT <= 0) {
-        e.aiT = enraged ? 1.8 : 2.6;
-        const n = enraged ? 9 : 7;
-        for (let i = 0; i < n; i++) {
-          this.fireShot(e.x + nx * 50, e.y + ny * 50, toward + (i - (n - 1) / 2) * 0.13, 260, 12, 18 * dmgScale, '#ff7a1a');
-        }
-      }
-      if (e.aiT2 <= 0) {
-        e.aiT2 = enraged ? 5 : 8;
-        const off = Math.random() * JJ.TAU;
-        for (let i = 0; i < 24; i++) this.fireShot(e.x, e.y, off + (i / 24) * JJ.TAU, 190, 12, 16 * dmgScale, '#ff4a1a');
-        this.shake = Math.max(this.shake, 6);
-      }
-      const m = enraged ? 1.35 : 1;
-      return { x: nx * spd * m, y: ny * spd * m };
+
+    if (e.invuln) return { x: nx * spd * 1.8, y: ny * spd * 1.8 };
+
+    // Bosses that get left behind leap back into the fight.
+    e.farT = dist > 600 ? (e.farT || 0) + dt : 0;
+    if (e.farT > 2.5) {
+      e.farT = 0;
+      this.bossPattern(e, { type: 'teleport' });
     }
-    return { x: nx * spd, y: ny * spd };
+
+    const rate = enraged ? 1.4 : 1;
+    for (let i = 0; i < d.patterns.length; i++) {
+      e.timers[i] -= dt * rate;
+      if (e.timers[i] <= 0) {
+        e.timers[i] = d.patterns[i].every;
+        this.bossPattern(e, d.patterns[i]);
+        if (e.windupT > 0) break;
+      }
+    }
+
+    const m = enraged ? 1.25 : 1;
+    if (d.keep) {
+      const want = dist > d.keep[1] ? 1 : dist < d.keep[0] ? -1 : 0.15;
+      return { x: (nx * want - ny * 0.6) * spd * m, y: (ny * want + nx * 0.6) * spd * m };
+    }
+    return { x: nx * spd * m, y: ny * spd * m };
   }
 
-  fireShot(x, y, ang, spd, r, dmg, color) {
-    if (this.shots.length > 400) return;
-    this.shots.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, r, dmg, color, life: 5 });
+  bossPattern(e, pat) {
+    const p = this.player;
+    const toward = Math.atan2(p.y - e.y, p.x - e.x);
+    const big = e.boss === 'major' ? 11 : 9;
+    switch (pat.type) {
+      case 'ring': {
+        const off = Math.random() * JJ.TAU;
+        for (let i = 0; i < pat.n; i++) this.fireShot(e.x, e.y, off + (i / pat.n) * JJ.TAU, pat.spd, big, e.shotDmg, pat.color);
+        break;
+      }
+      case 'fan':
+        for (let i = 0; i < pat.n; i++) {
+          this.fireShot(e.x, e.y, toward + (i - (pat.n - 1) / 2) * pat.spread, pat.spd, big, e.shotDmg, pat.color);
+        }
+        break;
+      case 'spiral':
+        e.spiral = pat;
+        e.spiralT = pat.dur;
+        e.spiralAcc = 0;
+        e.spiralA = toward;
+        break;
+      case 'charge':
+        e.windupT = pat.windup;
+        e.chargeDir = toward;
+        e.chargeSpd = pat.speed;
+        e.chargePat = pat;
+        break;
+      case 'summon': {
+        const room = JJ.ENEMY_CAP + 40 - this.enemies.length;
+        const n = Math.min(pat.n, room);
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * JJ.TAU;
+          this.spawnEnemy(pat.enemy, e.x + Math.cos(a) * (e.r + 40), e.y + Math.sin(a) * (e.r + 40));
+        }
+        this.effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r + 60, t: 0, life: 0.5, color: e.color });
+        break;
+      }
+      case 'teleport': {
+        this.burst(e.x, e.y, e.color, 20, 200);
+        const a = Math.random() * JJ.TAU;
+        const r = JJ.rand(200, 280);
+        e.x = p.x + Math.cos(a) * r;
+        e.y = p.y + Math.sin(a) * r;
+        this.burst(e.x, e.y, e.color, 20, 200);
+        this.effects.push({ type: 'ring', x: e.x, y: e.y, r: 90, t: 0, life: 0.4, color: e.color });
+        break;
+      }
+    }
+    if (pat.then && pat.type !== 'charge') this.bossPattern(e, pat.then);
+  }
+
+  fireShot(x, y, ang, spd, r, dmg, color, kind) {
+    if (this.shots.length > 500) return;
+    this.shots.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, ang, r, dmg, color, kind, life: 5 });
     JJ.Audio.sfx.shoot();
   }
 
@@ -874,12 +1038,21 @@ JJ.Game = class Game {
     const coinVal = 1 + Math.floor(this.t / 180);
 
     if (e.boss) {
+      const major = e.boss === 'major';
+      const def = JJ.ENEMIES[e.type];
       this.bossKills++;
-      this.shake = 15;
-      for (let i = 0; i < 20; i++) this.dropPickup('coin', e.x + JJ.rand(-60, 60), e.y + JJ.rand(-60, 60), coinVal);
+      this.shake = major ? 15 : 8;
+      for (let i = 0; i < (major ? 20 : 8); i++) this.dropPickup('coin', e.x + JJ.rand(-60, 60), e.y + JJ.rand(-60, 60), coinVal);
       this.dropPickup('gem', e.x, e.y, e.xp);
-      this.dropPickup('chest', e.x, e.y, 3);
-      this.dropPickup('heart', e.x + 30, e.y, 1);
+      this.dropPickup('chest', e.x, e.y, major ? 3 : 1);
+      if (major || Math.random() < 0.5) this.dropPickup('heart', e.x + 30, e.y, 1);
+      if (def.onDeath) {
+        for (let i = 0; i < def.onDeath.n; i++) {
+          const a = (i / def.onDeath.n) * JJ.TAU;
+          this.spawnEnemy(def.onDeath.enemy, e.x + Math.cos(a) * 30, e.y + Math.sin(a) * 30);
+        }
+      }
+      this.addDecal(e, 2.2);
       this.burst(e.x, e.y, e.color, 60, 300);
       this.ui.toast(`${JJ.ENEMIES[e.type].name} has fallen!`, 3);
       if (e.type === 'dragon') {
@@ -898,6 +1071,7 @@ JJ.Game = class Game {
         for (let i = 0; i < 6; i++) this.dropPickup('coin', e.x + JJ.rand(-30, 30), e.y + JJ.rand(-30, 30), coinVal);
       }
       this.burst(e.x, e.y, e.color, e.elite ? 24 : 6, 140);
+      this.addDecal(e, 1);
     }
 
     if (e.type === 'slime') {
@@ -919,6 +1093,23 @@ JJ.Game = class Game {
       if (this.effects.length < 220) this.effects.push({ type: 'ring', x: e.x, y: e.y, r: 80, t: 0, life: 0.25, color: '#ff8833' });
     }
     JJ.Audio.sfx.kill();
+  }
+
+  // Remains left on the ground; they fade out over time.
+  addDecal(e, scale) {
+    const kind = e.draw || e.type;
+    const color =
+      kind.startsWith('slime') ? 'rgba(90,200,80,' :
+      kind === 'skeleton' || kind === 'archer' ? 'rgba(220,214,195,' :
+      kind === 'wraith' ? 'rgba(160,220,240,' :
+      kind === 'mage' ? 'rgba(120,40,140,' : 'rgba(110,20,20,';
+    if (this.decals.length > 150) this.decals.shift();
+    const blobs = [];
+    const n = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      blobs.push([JJ.rand(-1, 1) * e.r * 0.8 * scale, JJ.rand(-0.6, 0.6) * e.r * 0.8 * scale, JJ.rand(0.3, 0.6) * e.r * scale]);
+    }
+    this.decals.push({ x: e.x, y: e.y, color, blobs, t: 0, life: 25 });
   }
 
   // ------------------------------------------------------------------ pickups
@@ -1038,7 +1229,7 @@ JJ.Game = class Game {
         this.revive = false;
         p.hp = this.stats.maxHp * 0.5;
         p.inv = 2.5;
-        this.ui.toast('🪶 The Phoenix Feather burns... Johnny rises!', 3);
+        this.ui.toast(`🪶 The Phoenix Feather burns... ${JJ.Save.data.johnny.name} rises!`, 3);
         this.effects.push({ type: 'ring', x: p.x, y: p.y, r: 320, t: 0, life: 0.6, color: '#ffb347' });
         this.grid.each(p.x, p.y, 320, (e) => {
           if (e.dead) return;

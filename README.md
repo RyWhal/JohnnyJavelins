@@ -38,7 +38,18 @@ npx wrangler deploy
 - **Javelin upgrades** stack: extra javelins, piercing, ricochets, splitting shafts, explosive tips, fire, frost, chain lightning, homing, boomerang returns, 8-way volleys, orbiting halos, javelin rain, and javelin novas.
 - **Legendary evolutions** appear once you've invested in the right pair of upgrades. Examples: *Thousand Spears* doubles every volley, *Javelin Singularity* turns explosions into black holes, and *Infinite Recursion* makes split javelins split again. Hints are in the Armory's Hall of Records.
 - **Elite** monsters (gold glow) and **bosses** drop treasure chests with free upgrades. Chests favour legendaries.
-- Bosses arrive at 5:00 (Ogre Warlord), 10:00 (Lich King) and 15:00 (Ancient Dragon). Slay the dragon to win.
+- **A boss every minute.** Crowned mini-bosses (Goblin Warchief, Gelatinous King, Alpha Wolf, Bone Colossus, Hexmother, Banshee, Troll Chieftain, Orc Warlord) fill the gaps between the big three: the Ogre Warlord (5:00), the Lich King (10:00) and the Ancient Dragon (15:00). Slay the dragon to win. Bosses are shielded until they're on screen, telegraph their charges, and enrage below half health.
+- **Adaptive difficulty.** A director watches how easily you're clearing the horde and toughens monsters when you're cruising. Boss health is sized from the damage you've actually been dealing to bosses, so fights stay meaningful however broken your build gets.
+
+## The world
+
+The world is split into seven biomes with blended borders, each with its own ground, props, weather and favourite monsters: Greenhollow Meadow, the Darkwood, Sunscorch Dunes, the Frostlands, Murkmire Bog, the Barrow Fields and the Ashen Wastes. Day turns to night over a 15-minute run, and the dynamic lighting picks up Johnny's torch, glowing javelins, explosions, lava, mushrooms and will-o'-wisps.
+
+If the game runs slowly, set **Graphics** to **Low** in Options (it also switches automatically if a run is struggling).
+
+## Design your Johnny
+
+**🎨 Customize Johnny** on the main menu lets you pick a name, skin, hairstyle and colour, headgear, facial features, tunic, trousers, cape, and your javelins' shaft and fletching. Your choices are saved and used in every run.
 
 ## Roguelite progression
 
@@ -57,8 +68,10 @@ Progress is saved in your browser's `localStorage`.
 | `public/js/util.js` | Helpers and the spatial grid used for collisions |
 | `public/js/audio.js` | Procedural WebAudio sound effects |
 | `public/js/save.js` | Persistent gold, Armory items, unlocks and records |
+| `public/js/johnny.js` | Johnny customization options and Johnny/javelin drawing |
 | `public/js/upgrades.js` | In-run upgrade cards and legendary evolutions |
-| `public/js/enemies.js` | Monster stats, wave schedule, scripted events and monster drawing |
+| `public/js/world.js` | Biomes, Voronoi world layout and cached ground-chunk painting |
+| `public/js/enemies.js` | Monster and boss definitions (attack patterns), wave schedule, events and monster drawing |
 | `public/js/input.js` | Keyboard, mouse and touch joystick |
 | `public/js/game.js` | Simulation: Johnny, javelins, monsters, pickups, leveling |
 | `public/js/render.js` | Canvas rendering |

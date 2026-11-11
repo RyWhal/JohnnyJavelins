@@ -37,11 +37,31 @@
       <p class="tagline">One man. Infinite javelins. Zero chill.</p>
       <div class="menu-buttons">
         <button class="btn big" id="btn-play">⚔️ Start Run</button>
+        <button class="btn" id="btn-designer">🎨 Customize Johnny</button>
         <button class="btn" id="btn-shop">🏛️ The Armory <span class="gold-pill">🪙 <span class="gold-amt">0</span></span></button>
         <button class="btn" id="btn-howto">📖 How to Play</button>
         <button class="btn" id="btn-options">⚙️ Options</button>
       </div>
       <div id="records" class="records"></div>
+    </div>
+  </div>
+
+  <!-- Johnny designer -->
+  <div id="designer" class="screen hidden">
+    <div class="panel wide">
+      <h2>Design Your Johnny</h2>
+      <div class="designer">
+        <div class="designer-preview">
+          <canvas id="johnny-preview" width="480" height="480"></canvas>
+          <label class="name-field">Name <input id="johnny-name" maxlength="16" autocomplete="off" spellcheck="false" /></label>
+          <div class="designer-actions">
+            <button class="btn small" id="btn-random-look">🎲 Randomize</button>
+            <button class="btn small ghost" id="btn-reset-look">↺ Classic Johnny</button>
+          </div>
+        </div>
+        <div id="designer-opts" class="designer-opts"></div>
+      </div>
+      <button class="btn big" data-back>Looking good!</button>
     </div>
   </div>
 
@@ -69,6 +89,7 @@
       <h2>Options</h2>
       <div class="options-list">
         <label class="opt"><span>Aiming</span><button class="btn small" id="opt-aim"></button></label>
+        <label class="opt"><span>Graphics</span><button class="btn small" id="opt-quality"></button></label>
         <label class="opt"><span>Sound</span><button class="btn small" id="opt-sound"></button></label>
         <label class="opt"><span>Damage numbers</span><button class="btn small" id="opt-dmg"></button></label>
         <label class="opt"><span>Screen shake</span><button class="btn small" id="opt-shake"></button></label>
@@ -156,8 +177,10 @@
 
   <script src="js/util.js"></script>
   <script src="js/audio.js"></script>
+  <script src="js/johnny.js"></script>
   <script src="js/save.js"></script>
   <script src="js/upgrades.js"></script>
+  <script src="js/world.js"></script>
   <script src="js/enemies.js"></script>
   <script src="js/input.js"></script>
   <script src="js/game.js"></script>
