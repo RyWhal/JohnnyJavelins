@@ -177,24 +177,25 @@ JJ.UI = class UI {
     }
     body.innerHTML = '<div class="lb-msg">Summoning the Johnnys…</div>';
     try {
-      const { entries, total } = await JJ.Leaderboard.top();
+      const { entries, total, totalJavelins } = await JJ.Leaderboard.top();
       if (!entries.length) {
         body.innerHTML = '<div class="lb-msg">No runs yet. Be the first Johnny!</div>';
         return;
       }
       const medal = ['🥇', '🥈', '🥉'];
       body.innerHTML = `<table class="lb-table">
-        <thead><tr><th>#</th><th>Name</th><th>Survived</th><th>Kills</th><th>Level</th></tr></thead>
+        <thead><tr><th>#</th><th>Name</th><th>Survived</th><th>Kills</th><th>Javelins</th><th>Level</th></tr></thead>
         <tbody>${entries
           .map((e) => `<tr class="${e.rank <= 3 ? 'top' + e.rank : ''} ${e.rank === this.myRank ? 'me' : ''}">
             <td>${medal[e.rank - 1] || e.rank}</td>
             <td>Johnny${e.won ? ' 🐉' : ''}</td>
             <td>${JJ.formatTime(e.time_s)}</td>
             <td>${JJ.formatNum(e.kills)}</td>
+            <td>${e.javelins ? JJ.formatNum(e.javelins) : '—'}</td>
             <td>${e.level}</td>
           </tr>`)
           .join('')}</tbody></table>
-        <div class="lb-msg" style="padding:10px 0 0">${total} run${total === 1 ? '' : 's'} recorded · 🐉 = slew the dragon</div>`;
+        <div class="lb-msg" style="padding:10px 0 0">${total} run${total === 1 ? '' : 's'} recorded · <b>${(totalJavelins || 0).toLocaleString()}</b> javelins thrown by all Johnnys · 🐉 = slew the dragon</div>`;
     } catch (err) {
       body.innerHTML = '<div class="lb-msg">Couldn\'t reach the leaderboard right now. Try again in a moment.</div>';
     }
@@ -371,6 +372,7 @@ JJ.UI = class UI {
         <div>Best survival time</div><div>${JJ.formatTime(st.bestTime)}</div>
         <div>Highest level</div><div>${st.bestLevel}</div>
         <div>Monsters skewered</div><div>${JJ.formatNum(st.totalKills)}</div>
+        <div>Javelins thrown</div><div>${JJ.formatNum(st.totalJavelins || 0)}</div>
         <div>Bosses felled</div><div>${st.bossKills}</div>
         <div class="legend-list"><h3>Legendary Evolutions discovered</h3>${legends
           .map((u) => {
@@ -484,6 +486,7 @@ JJ.UI = class UI {
       ['Move speed', Math.round(s.speed)],
       ['Armor', s.armor],
       ['Regen', `${s.regen.toFixed(1)}/s`],
+      ['Javelins thrown', JJ.formatNum(g.javelins)],
       ['Rerolls left', g.rerolls],
       ['Phoenix Feather', g.revive ? 'Ready' : '—'],
     ];
@@ -508,6 +511,7 @@ JJ.UI = class UI {
       <div>Survived</div><div>${JJ.formatTime(r.time)}</div>
       <div>Level reached</div><div>${r.level}</div>
       <div>Monsters skewered</div><div>${JJ.formatNum(r.kills)}</div>
+      <div>Javelins thrown</div><div>${JJ.formatNum(r.javelins)}</div>
       ${legends ? `<div>Legendaries</div><div>${legends}</div>` : ''}
       <div>Gold collected</div><div>🪙 ${r.gold}</div>
       <div>Survival bonus</div><div>🪙 ${r.bonus}</div>

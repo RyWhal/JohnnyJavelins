@@ -24,10 +24,14 @@ const intIn = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 
 async function leaderboard(env) {
   const { results } = await env.DB.prepare(
-    `SELECT time_s, kills, level, won, bosses, created_at FROM scores ORDER BY ${ORDER} LIMIT ?`,
+    `SELECT time_s, kills, javelins, level, won, bosses, created_at FROM scores ORDER BY ${ORDER} LIMIT ?`,
   ).bind(TOP_N).all();
-  const total = await env.DB.prepare('SELECT COUNT(*) AS n FROM scores').first('n');
-  return json({ entries: results.map((r, i) => ({ rank: i + 1, name: NAME, ...r, won: !!r.won })), total });
+  const totals = await env.DB.prepare('SELECT COUNT(*) AS n, COALESCE(SUM(javelins), 0) AS j FROM scores').first();
+  return json({
+    entries: results.map((r, i) => ({ rank: i + 1, name: NAME, ...r, won: !!r.won })),
+    total: totals.n,
+    totalJavelins: totals.j,
+  });
 }
 
 async function submit(request, env) {
@@ -40,12 +44,14 @@ async function submit(request, env) {
   // Any name the client sends is ignored. It's always Johnny.
   const time_s = Math.floor(Number(body.time));
   const kills = Math.floor(Number(body.kills));
+  const javelins = Math.floor(Number(body.javelins || 0));
   const level = Math.floor(Number(body.level));
   const bosses = Math.floor(Number(body.bosses || 0));
   const won = body.won ? 1 : 0;
 
   // Sanity checks against obviously impossible runs.
-  if (!intIn(time_s, 30, 3600) || !intIn(kills, 0, 200000) || !intIn(level, 1, 400) || !intIn(bosses, 0, 40)) {
+  if (!intIn(time_s, 30, 3600) || !intIn(kills, 0, 200000) || !intIn(level, 1, 400) || !intIn(bosses, 0, 40) ||
+      !intIn(javelins, 0, 100000000) || javelins > time_s * 20000) {
     return json({ error: 'Implausible run' }, 400);
   }
   if (won && time_s < 900) return json({ error: 'Implausible run' }, 400);
@@ -60,8 +66,8 @@ async function submit(request, env) {
   if (recent > 0) return json({ error: 'Slow down, Johnny' }, 429);
 
   const row = await env.DB.prepare(
-    'INSERT INTO scores (time_s, kills, level, won, bosses, ip_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
-  ).bind(time_s, kills, level, won, bosses, ipHash, now).first();
+    'INSERT INTO scores (time_s, kills, javelins, level, won, bosses, ip_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+  ).bind(time_s, kills, javelins, level, won, bosses, ipHash, now).first();
 
   // Rank = number of runs strictly better than this one, plus one.
   const better = await env.DB.prepare(

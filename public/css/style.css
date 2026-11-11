@@ -341,7 +341,7 @@ kbd {
   .pause-cols { grid-template-columns: 1fr; }
   .designer { grid-template-columns: 1fr; }
   .lb-table { font-size: 14px; }
-  .lb-table th:nth-child(5), .lb-table td:nth-child(5) { display: none; }
+  .lb-table th:nth-child(6), .lb-table td:nth-child(6) { display: none; }
   #johnny-preview { width: 180px; height: 180px; }
   .designer-opts { max-height: none; }
   .cards { grid-template-columns: 1fr; }

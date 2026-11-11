@@ -51,6 +51,7 @@ JJ.Game = class Game {
     this.gemCount = 0;
 
     this.kills = 0;
+    this.javelins = 0; // every javelin thrown this run (volleys, splits, novas, rain...)
     this.gold = 0;
     this.bossKills = 0;
     this.rerolls = S.metaLevel('reroll');
@@ -485,6 +486,7 @@ JJ.Game = class Game {
     const s = this.stats;
     const spd = s.jspeed * (o.spdMul || 1);
     const life = (s.range / s.jspeed) * (o.lifeMul || 1);
+    this.javelins++;
     const j = {
       x, y, ang, spd,
       vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
@@ -720,6 +722,7 @@ JJ.Game = class Game {
         y = p.y + JJ.rand(-hh, hh) * 0.8;
       }
       this.strikes.push({ x, y, t: -i * 0.05, land: 0.45 });
+      this.javelins++;
     }
   }
 
@@ -1392,12 +1395,13 @@ JJ.Game = class Game {
     st.bestTime = Math.max(st.bestTime, this.t);
     st.bestLevel = Math.max(st.bestLevel, this.player.level);
     st.totalKills += this.kills;
+    st.totalJavelins = (st.totalJavelins || 0) + this.javelins;
     st.bossKills += this.bossKills;
     S.save();
     if (won) JJ.Audio.sfx.legendary();
     else JJ.Audio.sfx.gameover();
     this.ui.showGameOver({
-      won, time: this.t, level: this.player.level, kills: this.kills,
+      won, time: this.t, level: this.player.level, kills: this.kills, javelins: this.javelins,
       gold: runGold, bonus, total, newBest, legendaries: this.legendaries.slice(), bosses: this.bossKills,
     });
   }

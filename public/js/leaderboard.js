@@ -20,6 +20,7 @@ JJ.Leaderboard = (() => {
       body: JSON.stringify({
         time: Math.floor(run.time),
         kills: run.kills,
+        javelins: run.javelins,
         level: run.level,
         bosses: run.bosses,
         won: !!run.won,

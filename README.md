@@ -20,8 +20,8 @@ The game is served by a Cloudflare Worker (`src/worker.js`) with static assets f
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/leaderboard` | Top 25 runs and the total run count |
-| `POST /api/score` | Submit a run (`time`, `kills`, `level`, `bosses`, `won`); any name sent is ignored |
+| `GET /api/leaderboard` | Top 25 runs, total run count and total javelins thrown |
+| `POST /api/score` | Submit a run (`time`, `kills`, `javelins`, `level`, `bosses`, `won`); any name sent is ignored |
 
 Submissions are sanity-checked and rate-limited per IP (stored only as a salted hash).
 
@@ -64,7 +64,7 @@ If the game runs slowly, set **Graphics** to **Low** in Options (it also switche
 
 ## Leaderboard
 
-Every run of 30 seconds or more is submitted to the online leaderboard automatically at game over, and the game-over screen shows where it placed. There's no name entry: every entry on the board is **Johnny**. Ranking puts dragon slayers (🐉) first, then the longest survival, then most kills. Open it from **🏆 Leaderboard** on the main menu or the game-over screen.
+Every run of 30 seconds or more is submitted to the online leaderboard automatically at game over, and the game-over screen shows where it placed. There's no name entry: every entry on the board is **Johnny**. Ranking puts dragon slayers (🐉) first, then the longest survival, then most kills. The game also counts every javelin Johnny throws (volleys, splits, novas, the Mega-Javelin and javelin rain): each run's count goes on the board, the board shows the total thrown by all Johnnys, and your lifetime total is in the Armory's Hall of Records. Open it from **🏆 Leaderboard** on the main menu or the game-over screen.
 
 The leaderboard only works on the hosted site; opening `index.html` from disk shows a friendly offline message.
 

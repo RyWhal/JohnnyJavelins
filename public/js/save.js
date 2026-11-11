@@ -33,7 +33,7 @@ JJ.Save = (() => {
     gold: 0,
     meta: {},
     unlocks: {},
-    stats: { runs: 0, wins: 0, bestTime: 0, bestLevel: 0, totalKills: 0, bossKills: 0, legendaries: {} },
+    stats: { runs: 0, wins: 0, bestTime: 0, bestLevel: 0, totalKills: 0, totalJavelins: 0, bossKills: 0, legendaries: {} },
     settings: { aim: 'auto', sound: true, damageNumbers: true, shake: true, quality: 'high' },
     johnny: JJ.defaultLook(),
   });
