@@ -98,6 +98,7 @@ JJ.Renderer = class Renderer {
     const hw = g.viewW / 2 + 40, hh = g.viewH / 2 + 40;
     const x0 = Math.floor((cx - hw) / S), x1 = Math.floor((cx + hw) / S);
     const y0 = Math.floor((cy - hh) / S), y1 = Math.floor((cy + hh) / S);
+    ctx.imageSmoothingEnabled = false;
     for (let ix = x0; ix <= x1; ix++) {
       for (let iy = y0; iy <= y1; iy++) {
         const c = JJ.World.getChunk(ix, iy);
@@ -106,6 +107,37 @@ JJ.Renderer = class Renderer {
         for (const l of c.lights) this.lights.push(l);
       }
     }
+    ctx.imageSmoothingEnabled = true;
+    JJ.World.prefetch(cx, cy, hw, hh);
+  }
+
+  // The Darkwood has no trees on the ground; instead, soft leaf shadows from
+  // an unseen canopy drift over everything (two layers with parallax).
+  drawCanopy(time) {
+    const { ctx } = this;
+    const { x: cx, y: cy } = this.cam;
+    const g = this.game;
+    const hw = g.viewW / 2 + 200, hh = g.viewH / 2 + 200;
+    ctx.setTransform(...this.worldTransform);
+    const spr = this.glowSprite('#000000');
+    for (const [cell, par, alpha, size] of [[260, 0.15, 0.22, 230], [180, 0.35, 0.16, 150]]) {
+      const ox = time * 6 * (1 + par), oy = time * 3;
+      const px = cx * par;
+      const py = cy * par;
+      const x0 = Math.floor((cx - hw - px - ox) / cell), x1 = Math.floor((cx + hw - px - ox) / cell);
+      const y0 = Math.floor((cy - hh - py - oy) / cell), y1 = Math.floor((cy + hh - py - oy) / cell);
+      for (let ix = x0; ix <= x1; ix++) {
+        for (let iy = y0; iy <= y1; iy++) {
+          if (JJ.hash2(ix * 3 + cell, iy * 7) > 0.55) continue;
+          const x = ix * cell + JJ.hash2(ix, iy + cell) * cell + px + ox;
+          const y = iy * cell + JJ.hash2(ix + cell, iy) * cell + py + oy;
+          const s = size * (0.7 + JJ.hash2(ix + 9, iy + 4) * 0.6);
+          ctx.globalAlpha = alpha * this.canopyFade;
+          ctx.drawImage(spr, x - s, y - s * 0.7, s * 2, s * 1.4);
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   drawDecals() {
@@ -273,6 +305,8 @@ JJ.Renderer = class Renderer {
       ctx.fillRect(0, 0, this.w, this.h);
     }
     if (live && this.hi) this.collectLights(time);
+    this.canopyFade = JJ.lerp(this.canopyFade || 0, this.biome.canopy ? 1 : 0, 1 - Math.exp(-dt * 1.5));
+    if (this.hi && this.canopyFade > 0.02) this.drawCanopy(time);
     this.updateAmbient(dt);
     this.drawAmbient(time, false);
     this.drawLighting(time);
@@ -377,13 +411,14 @@ JJ.Renderer = class Renderer {
     const g = this.game, p = g.player;
     if (p.inv > 0 && g.state === 'playing' && Math.floor(time * 20) % 2 === 0 && !g.won) return;
     const x = p.x, y = p.y;
-    JJ.drawJohnny(ctx, JJ.Save.data.johnny, x, y, { face: p.face, walk: p.walk, moving: p.moving, time });
-
-    // held javelin
+    const look = JJ.Save.data.johnny;
     const pull = p.throwAnim > 0 ? -10 * (p.throwAnim / 0.15) : 0;
     const a = p.face;
-    const hx = x + Math.cos(a) * (6 + pull), hyy = y - 4 + Math.sin(a) * (6 + pull);
-    this.javelinShape(hx, hyy, a, 0.9, this.tipColor(), false);
+    const gr = JJ.johnnyGrip(x, y + (p.moving ? Math.sin(p.walk) * 1.5 : 0), a, pull);
+    // Held javelin is carried behind the body; the hand grips it on top.
+    this.javelinShape(gr.jx, gr.jy, a, 0.9, this.tipColor(), false);
+    JJ.drawJohnny(ctx, look, x, y, { face: a, walk: p.walk, moving: p.moving, time, hand: { x: gr.gx, y: gr.gy } });
+    JJ.drawJohnnyHand(ctx, look, gr.gx, gr.gy);
 
     // frenzy aura
     if (g.frenzyT > 0) {
@@ -521,9 +556,11 @@ JJ.Renderer = class Renderer {
 
   drawPickups(time) {
     const { ctx } = this;
+    const sprites = JJ.Sprites.ready;
     for (const k of this.game.pickups) {
       if (k.dead) continue;
       const bob = Math.sin(k.t * 4) * 2;
+      if (sprites && this.drawPickupSprite(ctx, k, bob, time)) continue;
       switch (k.type) {
         case 'gem': {
           const v = k.value;
@@ -577,6 +614,47 @@ JJ.Renderer = class Renderer {
         }
       }
     }
+  }
+
+  drawPickupSprite(ctx, k, bob, time) {
+    let name, size = 16, sx = 1;
+    switch (k.type) {
+      case 'gem': {
+        const v = k.value;
+        name = v >= 50 ? 'gem50' : v >= 10 ? 'gem10' : v >= 3 ? 'gem3' : 'gem1';
+        size = v >= 50 ? 22 : v >= 10 ? 18 : v >= 3 ? 15 : 13;
+        break;
+      }
+      case 'coin':
+        name = 'coin';
+        size = 14;
+        sx = Math.max(0.15, Math.abs(Math.cos(k.t * 3)));
+        break;
+      case 'chest': name = 'chest'; size = 34; break;
+      case 'heart': name = 'heart'; size = 20; break;
+      case 'magnet': name = 'magnet'; size = 20; break;
+      case 'frenzy': name = 'frenzy'; size = 22; break;
+      default: return false;
+    }
+    const grounded = k.type === 'chest';
+    // small ground shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(k.x, k.y + size * 0.45, size * 0.35, size * 0.12, 0, 0, JJ.TAU);
+    ctx.fill();
+    if (k.type === 'chest') {
+      ctx.fillStyle = `rgba(255,215,0,${0.18 + 0.1 * Math.sin(k.t * 5)})`;
+      ctx.beginPath();
+      ctx.arc(k.x, k.y, 26, 0, JJ.TAU);
+      ctx.fill();
+    }
+    JJ.Sprites.draw(ctx, name, k.x, k.y + (grounded ? size * 0.45 : bob - 2), size, { sx, center: !grounded });
+    // occasional sparkle on gems
+    if (k.type === 'gem' && Math.sin(k.t * 3 + k.x) > 0.97) {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(k.x + size * 0.15, k.y - size * 0.3 + bob, 2, 2);
+    }
+    return true;
   }
 
   drawEffects() {

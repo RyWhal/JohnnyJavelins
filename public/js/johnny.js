@@ -119,6 +119,14 @@ JJ.drawJohnny = (ctx, look, x, y, st) => {
   const bob = st.moving ? Math.sin(st.walk) * 1.5 : 0;
   const time = st.time;
 
+  // Headgear decides what hair can show: anything covering the crown of the
+  // head tucks tall styles away, and a hood hides hair at the back too.
+  const hat = look.hat;
+  const coversTop = hat === 'helm' || hat === 'horns' || hat === 'hood' || hat === 'wizard';
+  let hair = look.hair;
+  if ((coversTop && (hair === 'mohawk' || hair === 'spiky')) || (hat === 'crown' && hair === 'mohawk')) hair = 'short';
+  if (hat === 'hood' && (hair === 'long' || hair === 'ponytail')) hair = 'short';
+
   ctx.fillStyle = 'rgba(0,0,0,0.3)';
   ctx.beginPath();
   ctx.ellipse(x, y + 14, 12, 5, 0, 0, TAU);
@@ -161,11 +169,41 @@ JJ.drawJohnny = (ctx, look, x, y, st) => {
 
   const hy = y - 13 + bob;
 
+  // Throwing arm reaching for the grip (the hand itself is drawn over the
+  // javelin with drawJohnnyHand).
+  if (st.hand) {
+    const sx = x + dir * 6, sy = y - 4 + bob;
+    ctx.strokeStyle = look.tunic;
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(st.hand.x, st.hand.y);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+  }
+
   // hair behind the head
   ctx.fillStyle = look.hairColor;
-  if (look.hair === 'long') {
-    ctx.fillRect(x - 8, hy - 2, 16, 13);
-  } else if (look.hair === 'ponytail') {
+  if (hair === 'long') {
+    // Side locks that frame the face and fall to the shoulders.
+    ctx.beginPath();
+    ctx.moveTo(x - 9.5, hy);
+    ctx.arc(x, hy, 9.5, Math.PI, 0);
+    ctx.lineTo(x + 9.5, hy + 8);
+    ctx.quadraticCurveTo(x + 9.5, hy + 10.5, x + 7, hy + 10.5);
+    ctx.lineTo(x + 6, hy + 10.5);
+    ctx.lineTo(x + 6, hy + 2);
+    ctx.lineTo(x - 6, hy + 2);
+    ctx.lineTo(x - 6, hy + 10.5);
+    ctx.lineTo(x - 7, hy + 10.5);
+    ctx.quadraticCurveTo(x - 9.5, hy + 10.5, x - 9.5, hy + 8);
+    ctx.closePath();
+    ctx.fill();
+  } else if (hair === 'ponytail') {
     const sw = Math.sin(time * 8) * 2;
     ctx.beginPath();
     ctx.ellipse(x - dir * 9, hy + 4 + sw * 0.3, 3.5, 7, -dir * 0.4, 0, TAU);
@@ -180,7 +218,7 @@ JJ.drawJohnny = (ctx, look, x, y, st) => {
 
   // hair on top
   ctx.fillStyle = look.hairColor;
-  switch (look.hair) {
+  switch (hair) {
     case 'short':
     case 'long':
     case 'ponytail':
@@ -325,4 +363,21 @@ JJ.drawJohnny = (ctx, look, x, y, st) => {
       ctx.fill();
       break;
   }
+};
+
+// Johnny's hand, drawn on top of the held javelin so he visibly grips it.
+JJ.drawJohnnyHand = (ctx, look, x, y) => {
+  ctx.fillStyle = look.skin;
+  ctx.beginPath();
+  ctx.arc(x, y, 2.6, 0, JJ.TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+};
+
+// Where the hand grips a javelin held at angle `a` (pulled back by `pull`).
+JJ.johnnyGrip = (x, y, a, pull) => {
+  const hx = x + Math.cos(a) * (6 + pull), hy = y - 4 + Math.sin(a) * (6 + pull);
+  return { jx: hx, jy: hy, gx: hx - Math.cos(a) * 3, gy: hy - Math.sin(a) * 3 };
 };

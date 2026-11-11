@@ -259,10 +259,13 @@ JJ.UI = class UI {
     const cycle = t % 3;
     const face = cycle < 1.5 ? 0.35 : Math.PI - 0.35;
     const moving = cycle % 1.5 < 1.1;
-    JJ.drawJohnny(ctx, look, 0, 0, { face, walk: t * 12, moving, time: t });
     const throwK = Math.max(0, 1 - ((t * 1.3) % 2) * 4);
     const pull = -6 * throwK;
-    JJ.drawJavelin(ctx, Math.cos(face) * (6 + pull), -4 + Math.sin(face) * (6 + pull), face, 0.9, '#dfe6ee', false, false, look);
+    const walk = t * 12;
+    const gr = JJ.johnnyGrip(0, moving ? Math.sin(walk) * 1.5 : 0, face, pull);
+    JJ.drawJavelin(ctx, gr.jx, gr.jy, face, 0.9, '#dfe6ee', false, false, look);
+    JJ.drawJohnny(ctx, look, 0, 0, { face, walk, moving, time: t, hand: { x: gr.gx, y: gr.gy } });
+    JJ.drawJohnnyHand(ctx, look, gr.gx, gr.gy);
   }
 
   renderDesigner() {

@@ -58,7 +58,7 @@ npx wrangler dev
 
 ## The world
 
-The world is split into seven biomes with blended borders, each with its own ground, props, weather and favourite monsters: Greenhollow Meadow, the Darkwood, Sunscorch Dunes, the Frostlands, Murkmire Bog, the Barrow Fields and the Ashen Wastes. Day turns to night over a 15-minute run, and the dynamic lighting picks up Johnny's torch, glowing javelins, explosions, lava, mushrooms and will-o'-wisps.
+The world is split into seven biomes with blended borders, each with its own pixel-art ground, low props, weather and favourite monsters: Greenhollow Meadow, the Darkwood, Sunscorch Dunes, the Frostlands, Murkmire Bog, the Barrow Fields and the Ashen Wastes. Ground features (dirt, leaf litter, dunes, ice sheets, bog water, stone paths, lava pools) are baked into the ground; props are kept low (rocks, flowers, mushrooms, stumps, cacti, tombstones...) since the camera looks straight down, and the Darkwood suggests its canopy with drifting leaf shadows instead of trees. Day turns to night over a 15-minute run, and the dynamic lighting picks up Johnny's torch, glowing javelins, explosions, lava, lantern mushrooms, candles and embers.
 
 If the game runs slowly, set **Graphics** to **Low** in Options (it also switches automatically if a run is struggling).
 
@@ -91,7 +91,9 @@ Progress is saved in your browser's `localStorage`.
 | `public/js/save.js` | Persistent gold, Armory items, unlocks and records |
 | `public/js/johnny.js` | Johnny customization options and Johnny/javelin drawing |
 | `public/js/upgrades.js` | In-run upgrade cards and legendary evolutions |
-| `public/js/world.js` | Biomes, Voronoi world layout and cached ground-chunk painting |
+| `public/js/world.js` | Biomes, Voronoi world layout and cached pixel-art ground chunks |
+| `public/js/sprites.js`, `public/js/sprite-index.js` | Sprite atlas loading/drawing and the atlas index |
+| `public/assets/` | Sprite atlas and its credits |
 | `public/js/enemies.js` | Monster and boss definitions (attack patterns), wave schedule, events and monster drawing |
 | `public/js/input.js` | Keyboard, mouse and touch joystick |
 | `public/js/game.js` | Simulation: Johnny, javelins, monsters, pickups, leveling |
@@ -102,4 +104,10 @@ Progress is saved in your browser's `localStorage`.
 | `src/worker.js` | Cloudflare Worker: static assets and the leaderboard API |
 | `migrations/` | D1 schema |
 
-`wrangler.jsonc` holds the Cloudflare deploy config. All art is drawn procedurally on a canvas, so there are no image or audio assets.
+`wrangler.jsonc` holds the Cloudflare deploy config.
+
+## Art credits
+
+Monster, boss, pickup and prop sprites are hand-picked from [Pixel Art Atlas — 1.4M Synthetic Sprites](https://huggingface.co/datasets/Angais/pixel-art-atlas-1.4m) by Angais, released under **CC0 1.0** (AI-generated 16×16 sprites). The selection is packed into `public/assets/sprites.png`, with the source row of every sprite listed in `public/assets/sprites-credits.txt`; `public/js/sprite-index.js` maps names to atlas cells. Johnny (and the Johnny designer), javelins, effects and the pixel-art ground are drawn procedurally, and all sound is synthesized.
+
+To change a sprite, edit its dataset row id in `tools/sprite-picks.json` and rebuild the atlas with `tools/build-atlas.py` (instructions at the top of the script).

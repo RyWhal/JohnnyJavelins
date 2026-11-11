@@ -75,7 +75,7 @@ JJ.ENEMIES = {
     ],
   },
   trollChief: {
-    name: 'Gorrum the Troll Chieftain', draw: 'troll', hp: 5000, speed: 58, r: 52, dmg: 28, xp: 200, color: '#6a7a55',
+    name: 'Gorrum the Troll Chieftain', draw: 'troll', hp: 5000, speed: 58, r: 44, dmg: 28, xp: 200, color: '#6a7a55',
     boss: 'mini', fight: 20, shot: 16, regen: 0.006,
     patterns: [
       { type: 'charge', every: 3.5, speed: 460, dur: 0.9, windup: 0.6, then: { type: 'ring', n: 16, spd: 160, color: '#b9a27a' } },
@@ -112,7 +112,7 @@ JJ.ENEMIES = {
     ],
   },
   dragon: {
-    name: 'Ignaroth, Ancient Dragon', hp: 28000, speed: 64, r: 62, dmg: 36, xp: 0, color: '#b8322b',
+    name: 'Ignaroth, Ancient Dragon', hp: 28000, speed: 64, r: 48, dmg: 36, xp: 0, color: '#b8322b',
     boss: 'major', fight: 70, shot: 20,
     patterns: [
       { type: 'fan', every: 2.4, n: 9, spread: 0.12, spd: 270, color: '#ff7a1a' },
@@ -177,7 +177,7 @@ JJ.waveAt = (t) => {
 };
 
 // ---------------- Drawing ----------------
-JJ.drawEnemy = (ctx, e, time, px, py) => {
+JJ.drawEnemyClassic = (ctx, e, time, px, py) => {
   const r = e.r;
   const look = Math.atan2(py - e.y, px - e.x);
   const lx = Math.cos(look), ly = Math.sin(look);
@@ -539,7 +539,16 @@ JJ.drawEnemy = (ctx, e, time, px, py) => {
       ctx.fill();
   }
 
-  if (e.type === 'archer') {
+  JJ.drawEnemyOverlays(ctx, e, time, px, py, true);
+};
+
+// Status overlays shared by sprite and classic monsters: archer bow (classic
+// only), boss aura / charge telegraph / shield, burning, health bar.
+JJ.drawEnemyOverlays = (ctx, e, time, px, py, classic) => {
+  const r = e.r;
+  const look = Math.atan2(py - e.y, px - e.x);
+  const lx = Math.cos(look), ly = Math.sin(look);
+  if (classic && e.type === 'archer') {
     // bow
     ctx.strokeStyle = '#8b5a2b';
     ctx.lineWidth = 2.5;
@@ -556,7 +565,7 @@ JJ.drawEnemy = (ctx, e, time, px, py) => {
 
   if (e.boss) {
     // Mini-bosses get a crown; everyone gets a menacing aura.
-    if (e.boss === 'mini') {
+    if (classic && e.boss === 'mini') {
       const cy = e.y - r * 1.05;
       ctx.fillStyle = '#ffd34d';
       ctx.strokeStyle = '#8a5a00';
@@ -609,8 +618,61 @@ JJ.drawEnemy = (ctx, e, time, px, py) => {
   if (!e.boss && e.hp < e.maxHp && (e.maxHp > 60 || e.elite)) {
     const w = r * 2;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(e.x - w / 2, e.y - r - 10, w, 4);
+    const by = classic ? e.y - r - 10 : e.y - Math.min(r * 1.65, 56) - 6;
+    ctx.fillRect(e.x - w / 2, by, w, 4);
     ctx.fillStyle = '#e33';
-    ctx.fillRect(e.x - w / 2, e.y - r - 10, w * Math.max(0, e.hp / e.maxHp), 4);
+    ctx.fillRect(e.x - w / 2, by, w * Math.max(0, e.hp / e.maxHp), 4);
   }
+};
+
+// Sprite monsters: a 16x16 pixel-art sprite with procedural animation.
+JJ.drawEnemy = (ctx, e, time, px, py) => {
+  if (!JJ.Sprites.ready) return JJ.drawEnemyClassic(ctx, e, time, px, py);
+  const r = e.r;
+  const kind = e.draw || e.type;
+  const name = JJ.SPRITE_INDEX[e.type] ? e.type : kind;
+  // Cap the upscale so big bosses stay crisp (16px * 7 = 112px).
+  const size = Math.min(112, r * (e.boss ? 2.9 : 3.3));
+  const ph = time * 9 + e.id * 1.7;
+  const moving = Math.abs(e.vx || 0) + Math.abs(e.vy || 0) > 5 && !(e.frozenT > 0);
+  let hop = 0, sx = 1, sy = 1, rot = 0, floatY = 0;
+  if (kind === 'bat') {
+    sx = 1 + Math.sin(time * 24 + e.id) * 0.18;
+    floatY = -r * 0.9 + Math.sin(time * 5 + e.id) * 2;
+  } else if (kind === 'wraith') {
+    floatY = -r * 0.5 + Math.sin(time * 3 + e.id) * 3;
+  } else if (kind.startsWith('slime') || kind === 'slimeKing') {
+    const w = Math.sin(ph * 0.8);
+    sx = 1 + w * 0.08;
+    sy = 1 - w * 0.08;
+  } else if (moving) {
+    hop = Math.abs(Math.sin(ph)) * r * 0.16;
+    rot = Math.sin(ph) * 0.06;
+  }
+  if (e.lungeT > 0) sy *= 0.82;
+  if (e.windupT > 0) { sx *= 1.08; sy *= 0.9; }
+  // Sprites face right; flip toward travel (or toward Johnny when still).
+  const dirX = Math.abs(e.vx || 0) > 3 ? e.vx : px - e.x;
+  const flip = dirX < 0;
+  // Sprites are centred on the hitbox; the shadow sits under the feet.
+  const half = JJ.Sprites.height(name, size) / 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(e.x, e.y + half * 0.95, Math.min(r * 0.85, half * 0.8), Math.min(r * 0.3, half * 0.28), 0, 0, JJ.TAU);
+  ctx.fill();
+
+  const y = e.y + floatY - hop;
+  const base = { flip, sx, sy, rot, center: true };
+  if (e.elite) {
+    const g = 0.6 + 0.4 * Math.sin(time * 8);
+    for (const [ox, oy] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) {
+      JJ.Sprites.draw(ctx, name, e.x + ox, y + oy, size, { ...base, tint: 'gold', alpha: g });
+    }
+  }
+  JJ.Sprites.draw(ctx, name, e.x, y, size, base);
+  if (e.flash > 0) JJ.Sprites.draw(ctx, name, e.x, y, size, { ...base, tint: 'white', alpha: 0.85 });
+  else if (e.frozenT > 0) JJ.Sprites.draw(ctx, name, e.x, y, size, { ...base, tint: 'ice', alpha: 0.6 });
+  else if (e.invuln) JJ.Sprites.draw(ctx, name, e.x, y, size, { ...base, tint: 'white', alpha: 0.25 + 0.15 * Math.sin(time * 6) });
+
+  JJ.drawEnemyOverlays(ctx, e, time, px, py, false);
 };

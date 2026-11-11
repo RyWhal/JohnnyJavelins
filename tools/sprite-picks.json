@@ -1,0 +1,21 @@
+{
+ "bat": 7127, "slime": 8341, "slimelet": 42674, "goblin": 436918, "skeleton": 437249, "archer": 449990,
+ "wolf": 456055, "orc": 436111, "wraith": 50513, "mage": 457295, "troll": 457499,
+ "goblinChief": 443631, "slimeKing": 53705, "alphaWolf": 452424, "boneColossus": 456489, "witchQueen": 485537,
+ "banshee": 25559, "trollChief": 469298, "orcWarlord": 449269, "ogre": 427261, "lich": 447974, "dragon": 438749,
+ "gem1": 46230, "gem3": 9587, "gem10": 1416, "gem50": 17713, "coin": 3710, "chest": 961, "heart": 52211, "magnet": 27969, "frenzy": 6032,
+ "m_rock1": 1260, "m_rock2": 1508, "m_pebble": 6614, "m_grass1": 493, "m_grass2": 19060, "m_grass3": 48767,
+ "m_daisy1": 12818, "m_daisy2": 23521, "m_clover1": 467710, "m_clover2": 452975, "m_toad": 8419,
+ "f_mush1": 13785, "f_mush2": 31868, "f_lant1": 6318, "f_lant2": 13508, "f_fern1": 708, "f_fern2": 17891,
+ "f_moss1": 40010, "f_moss2": 107335, "f_stump1": 291, "f_stump2": 10535, "f_log1": 46350, "f_log2": 49640,
+ "d_cact1": 36178, "d_cact2": 63752, "d_sag1": 23294, "d_sag2": 28813, "d_bone1": 6696, "d_bone2": 7935,
+ "d_dino": 30761, "d_rock": 36206, "d_peb": 35576, "d_bush": 440904,
+ "t_snow1": 2774, "t_snow2": 12723, "t_fmush1": 436077, "t_fmush2": 439037, "t_cry1": 4931, "t_cry2": 76442,
+ "t_rock1": 8410, "t_rock2": 22345, "t_log": 32627, "t_grass": 219619,
+ "s_lily1": 45624, "s_lily2": 192538, "s_reed1": 4886, "s_reed2": 70062, "s_frog1": 749, "s_frog2": 15892,
+ "s_moss": 147587, "s_bush": 451181, "s_mush": 33671,
+ "g_tomb1": 472, "g_tomb2": 3642, "g_tomb3": 7808, "g_tomb4": 30441, "g_coffin": 346, "g_candle1": 676,
+ "g_candle2": 22974, "g_urn": 23760, "g_bone": 25607, "g_bush": 474410,
+ "v_obs1": 8100, "v_obs2": 11561, "v_rock1": 15273, "v_rock2": 31351, "v_cl1": 33300, "v_cl2": 49537,
+ "v_ember1": 5067, "v_ember2": 23483, "v_log": 4262
+}
