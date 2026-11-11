@@ -300,6 +300,23 @@ kbd {
 .chip.sel { border-color: var(--gold); color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
 .chip .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
+/* ---------------- Leaderboard ---------------- */
+.lb-panel { max-width: 720px; }
+.lb-body { max-height: 56vh; overflow-y: auto; margin-bottom: 6px; }
+.lb-table { width: 100%; border-collapse: collapse; font-size: 16px; }
+.lb-table th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; padding: 6px 8px; text-align: right; }
+.lb-table td { padding: 7px 8px; border-top: 1px solid rgba(107, 86, 54, 0.5); text-align: right; font-variant-numeric: tabular-nums; }
+.lb-table th:nth-child(2), .lb-table td:nth-child(2) { text-align: left; }
+.lb-table th:first-child, .lb-table td:first-child { text-align: center; width: 48px; }
+.lb-table td:nth-child(2) { font-weight: 800; }
+.lb-table tr.me td { background: rgba(255, 211, 77, 0.15); color: var(--gold); }
+.lb-table tr.top1 td:first-child { color: #ffd34d; font-size: 20px; }
+.lb-table tr.top2 td:first-child { color: #d8dde3; font-size: 18px; }
+.lb-table tr.top3 td:first-child { color: #d08a4a; font-size: 18px; }
+.lb-msg { color: var(--muted); padding: 22px 6px; }
+.go-rank { min-height: 26px; font-weight: 800; color: var(--gold); margin: 4px 0 0; font-size: 18px; }
+.go-rank.muted { color: var(--muted); font-weight: 600; font-size: 14px; }
+
 /* ---------------- Pause ---------------- */
 .pause-cols { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; text-align: left; }
 .stat-list { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; font-size: 14px; }
@@ -323,6 +340,8 @@ kbd {
   #hpbar { width: 130px; }
   .pause-cols { grid-template-columns: 1fr; }
   .designer { grid-template-columns: 1fr; }
+  .lb-table { font-size: 14px; }
+  .lb-table th:nth-child(5), .lb-table td:nth-child(5) { display: none; }
   #johnny-preview { width: 180px; height: 180px; }
   .designer-opts { max-height: none; }
   .cards { grid-template-columns: 1fr; }

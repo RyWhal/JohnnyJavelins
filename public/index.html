@@ -39,10 +39,24 @@
         <button class="btn big" id="btn-play">⚔️ Start Run</button>
         <button class="btn" id="btn-designer">🎨 Customize Johnny</button>
         <button class="btn" id="btn-shop">🏛️ The Armory <span class="gold-pill">🪙 <span class="gold-amt">0</span></span></button>
+        <button class="btn" id="btn-leaderboard">🏆 Leaderboard</button>
         <button class="btn" id="btn-howto">📖 How to Play</button>
         <button class="btn" id="btn-options">⚙️ Options</button>
       </div>
       <div id="records" class="records"></div>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <div id="leaderboard" class="screen hidden">
+    <div class="panel wide lb-panel">
+      <h2>🏆 Hall of Johnnys</h2>
+      <p class="sub">Every legend on this board is named Johnny. There is only Johnny.</p>
+      <div id="lb-body" class="lb-body"></div>
+      <div class="menu-buttons row">
+        <button class="btn small" id="btn-lb-refresh">↻ Refresh</button>
+        <button class="btn" data-back>Back</button>
+      </div>
     </div>
   </div>
 
@@ -167,8 +181,10 @@
     <div class="panel">
       <h2 id="go-title">Johnny has fallen</h2>
       <div id="go-stats" class="go-stats"></div>
+      <div id="go-rank" class="go-rank"></div>
       <div class="menu-buttons row">
         <button class="btn big" id="btn-again">Run it back</button>
+        <button class="btn" id="btn-go-lb">🏆 Leaderboard</button>
         <button class="btn" id="btn-go-shop">🏛️ Armory</button>
         <button class="btn ghost" id="btn-go-menu">Menu</button>
       </div>
@@ -185,6 +201,7 @@
   <script src="js/input.js"></script>
   <script src="js/game.js"></script>
   <script src="js/render.js"></script>
+  <script src="js/leaderboard.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>
 </body>

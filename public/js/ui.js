@@ -4,7 +4,7 @@
 JJ.UI = class UI {
   constructor() {
     this.$ = (id) => document.getElementById(id);
-    this.screens = ['menu', 'howto', 'options', 'shop', 'levelup', 'chest', 'pause', 'gameover', 'designer'];
+    this.screens = ['menu', 'howto', 'options', 'shop', 'levelup', 'chest', 'pause', 'gameover', 'designer', 'leaderboard'];
     this.returnTo = 'menu';
     this.shopTab = 'training';
     this.choices = [];
@@ -37,6 +37,9 @@ JJ.UI = class UI {
     this.click('btn-play', () => this.startRun());
     this.click('btn-shop', () => this.openShop('menu'));
     this.click('btn-designer', () => this.openDesigner());
+    this.click('btn-leaderboard', () => this.openLeaderboard('menu'));
+    this.click('btn-go-lb', () => this.openLeaderboard('gameover'));
+    this.click('btn-lb-refresh', () => this.renderLeaderboard());
     this.click('btn-random-look', () => {
       Object.assign(JJ.Save.data.johnny, JJ.randomLook());
       JJ.Save.save();
@@ -127,6 +130,7 @@ JJ.UI = class UI {
       JJ.Save.save();
     }
     if (this.returnTo === 'pause') this.show('pause');
+    else if (this.returnTo === 'gameover') this.show('gameover');
     else if (this.returnTo === 'gameover-menu') this.openMenu();
     else this.openMenu();
   }
@@ -156,6 +160,69 @@ JJ.UI = class UI {
     this.hudCache = {};
     this.game.start();
     this.toast(`Survive, ${JJ.Save.data.johnny.name}! Javelins are thrown automatically.`, 3);
+  }
+
+  // ------------------------------------------------------------ leaderboard
+  openLeaderboard(from) {
+    this.returnTo = from;
+    this.show('leaderboard');
+    this.renderLeaderboard();
+  }
+
+  async renderLeaderboard() {
+    const body = this.$('lb-body');
+    if (!JJ.Leaderboard.online()) {
+      body.innerHTML = '<div class="lb-msg">The leaderboard lives online. Play at the hosted site to join the Hall of Johnnys.</div>';
+      return;
+    }
+    body.innerHTML = '<div class="lb-msg">Summoning the Johnnys…</div>';
+    try {
+      const { entries, total } = await JJ.Leaderboard.top();
+      if (!entries.length) {
+        body.innerHTML = '<div class="lb-msg">No runs yet. Be the first Johnny!</div>';
+        return;
+      }
+      const medal = ['🥇', '🥈', '🥉'];
+      body.innerHTML = `<table class="lb-table">
+        <thead><tr><th>#</th><th>Name</th><th>Survived</th><th>Kills</th><th>Level</th></tr></thead>
+        <tbody>${entries
+          .map((e) => `<tr class="${e.rank <= 3 ? 'top' + e.rank : ''} ${e.rank === this.myRank ? 'me' : ''}">
+            <td>${medal[e.rank - 1] || e.rank}</td>
+            <td>Johnny${e.won ? ' 🐉' : ''}</td>
+            <td>${JJ.formatTime(e.time_s)}</td>
+            <td>${JJ.formatNum(e.kills)}</td>
+            <td>${e.level}</td>
+          </tr>`)
+          .join('')}</tbody></table>
+        <div class="lb-msg" style="padding:10px 0 0">${total} run${total === 1 ? '' : 's'} recorded · 🐉 = slew the dragon</div>`;
+    } catch (err) {
+      body.innerHTML = '<div class="lb-msg">Couldn\'t reach the leaderboard right now. Try again in a moment.</div>';
+    }
+  }
+
+  async submitRun(r) {
+    const el = this.$('go-rank');
+    el.className = 'go-rank muted';
+    this.myRank = null;
+    if (!JJ.Leaderboard.online()) {
+      el.textContent = 'Leaderboard is only available on the hosted site.';
+      return;
+    }
+    if (r.time < 30) {
+      el.textContent = 'Survive at least 30 seconds to make the leaderboard.';
+      return;
+    }
+    el.textContent = 'Submitting your run as… Johnny.';
+    try {
+      const res = await JJ.Leaderboard.submit(r);
+      this.myRank = res.rank;
+      el.className = 'go-rank';
+      el.textContent = res.rank <= 25
+        ? `🏆 Johnny placed #${res.rank} of ${res.total} on the leaderboard!`
+        : `Johnny placed #${res.rank} of ${res.total}.`;
+    } catch (err) {
+      el.textContent = `Couldn't submit to the leaderboard (${err.message}).`;
+    }
   }
 
   // ------------------------------------------------------------ designer
@@ -446,6 +513,7 @@ JJ.UI = class UI {
       <div>Survival bonus</div><div>🪙 ${r.bonus}</div>
       <div class="total">Total banked</div><div class="total">🪙 ${r.total}</div>
       ${r.newBest ? '<div class="new-best" style="grid-column:1/-1">New best survival time!</div>' : ''}`;
+    this.submitRun(r);
     setTimeout(() => this.show('gameover'), r.won ? 200 : 900);
   }
 

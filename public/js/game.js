@@ -1398,7 +1398,7 @@ JJ.Game = class Game {
     else JJ.Audio.sfx.gameover();
     this.ui.showGameOver({
       won, time: this.t, level: this.player.level, kills: this.kills,
-      gold: runGold, bonus, total, newBest, legendaries: this.legendaries.slice(),
+      gold: runGold, bonus, total, newBest, legendaries: this.legendaries.slice(), bosses: this.bossKills,
     });
   }
 };

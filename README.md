@@ -16,10 +16,25 @@ Then visit http://localhost:8000.
 
 ## Deploy
 
-The site is served as a Cloudflare Worker with static assets (`wrangler.jsonc`), on the custom domain `javelins.rjpw.space`:
+The game is served by a Cloudflare Worker (`src/worker.js`) with static assets from `public/`, on the custom domain `javelins.rjpw.space`. The Worker also serves the leaderboard API, backed by the D1 database `johnny-javelins-leaderboard`:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/leaderboard` | Top 25 runs and the total run count |
+| `POST /api/score` | Submit a run (`time`, `kills`, `level`, `bosses`, `won`); any name sent is ignored |
+
+Submissions are sanity-checked and rate-limited per IP (stored only as a salted hash).
 
 ```bash
+npx wrangler d1 migrations apply johnny-javelins-leaderboard --remote   # first time / new migrations
 npx wrangler deploy
+```
+
+For local development with a local D1 copy:
+
+```bash
+npx wrangler d1 migrations apply johnny-javelins-leaderboard --local
+npx wrangler dev
 ```
 
 ## Controls
@@ -46,6 +61,12 @@ npx wrangler deploy
 The world is split into seven biomes with blended borders, each with its own ground, props, weather and favourite monsters: Greenhollow Meadow, the Darkwood, Sunscorch Dunes, the Frostlands, Murkmire Bog, the Barrow Fields and the Ashen Wastes. Day turns to night over a 15-minute run, and the dynamic lighting picks up Johnny's torch, glowing javelins, explosions, lava, mushrooms and will-o'-wisps.
 
 If the game runs slowly, set **Graphics** to **Low** in Options (it also switches automatically if a run is struggling).
+
+## Leaderboard
+
+Every run of 30 seconds or more is submitted to the online leaderboard automatically at game over, and the game-over screen shows where it placed. There's no name entry: every entry on the board is **Johnny**. Ranking puts dragon slayers (🐉) first, then the longest survival, then most kills. Open it from **🏆 Leaderboard** on the main menu or the game-over screen.
+
+The leaderboard only works on the hosted site; opening `index.html` from disk shows a friendly offline message.
 
 ## Design your Johnny
 
@@ -76,6 +97,9 @@ Progress is saved in your browser's `localStorage`.
 | `public/js/game.js` | Simulation: Johnny, javelins, monsters, pickups, leveling |
 | `public/js/render.js` | Canvas rendering |
 | `public/js/ui.js` | Menus, HUD, level-up, chest, pause and game-over screens |
+| `public/js/leaderboard.js` | Leaderboard API client |
 | `public/js/main.js` | Boot and main loop |
+| `src/worker.js` | Cloudflare Worker: static assets and the leaderboard API |
+| `migrations/` | D1 schema |
 
 `wrangler.jsonc` holds the Cloudflare deploy config. All art is drawn procedurally on a canvas, so there are no image or audio assets.
