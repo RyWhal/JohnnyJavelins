@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>Johnny Javelins</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔱</text></svg>" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- In-run HUD -->
+  <div id="hud" class="hidden">
+    <div id="xpbar"><div id="xpfill"></div><span id="lvl">LV 1</span></div>
+    <div id="hud-row">
+      <div id="hud-left">
+        <div id="hpbar"><div id="hpfill"></div><span id="hptext">100 / 100</span></div>
+        <div id="build"></div>
+      </div>
+      <div id="timer">00:00</div>
+      <div id="hud-right">
+        <div>💀 <span id="kills">0</span></div>
+        <div>🪙 <span id="gold">0</span></div>
+        <button id="pausebtn" title="Pause (Esc)">❚❚</button>
+      </div>
+    </div>
+    <div id="bossbar" class="hidden"><div id="bossname"></div><div class="bar"><div id="bossfill"></div></div></div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <!-- Main menu -->
+  <div id="menu" class="screen">
+    <div class="panel title-panel">
+      <h1 class="logo"><span>Johnny</span><span>Javelins</span></h1>
+      <p class="tagline">One man. Infinite javelins. Zero chill.</p>
+      <div class="menu-buttons">
+        <button class="btn big" id="btn-play">⚔️ Start Run</button>
+        <button class="btn" id="btn-shop">🏛️ The Armory <span class="gold-pill">🪙 <span class="gold-amt">0</span></span></button>
+        <button class="btn" id="btn-howto">📖 How to Play</button>
+        <button class="btn" id="btn-options">⚙️ Options</button>
+      </div>
+      <div id="records" class="records"></div>
+    </div>
+  </div>
+
+  <!-- How to play -->
+  <div id="howto" class="screen hidden">
+    <div class="panel">
+      <h2>How to Play</h2>
+      <ul class="howto-list">
+        <li><b>Move</b> with <kbd>WASD</kbd> / arrow keys (or drag anywhere on touch screens).</li>
+        <li>Johnny <b>throws javelins automatically</b> at the nearest monster. Prefer to aim yourself? Switch to mouse aim in Options.</li>
+        <li>Collect <b>XP gems</b> to level up and pick an upgrade. Stack them for increasingly absurd javelin chaos.</li>
+        <li>Max out the right pairs of upgrades to unlock <b>Legendary</b> evolutions.</li>
+        <li><b>Elite</b> monsters (gold glow) and <b>bosses</b> drop treasure chests full of free upgrades.</li>
+        <li>Survive <b>15 minutes</b> and slay the Ancient Dragon to win.</li>
+        <li>Gold you collect is kept even if you die. Spend it in <b>The Armory</b> on permanent upgrades and new javelin techniques.</li>
+        <li><kbd>Esc</kbd>/<kbd>P</kbd> pause · <kbd>1</kbd>-<kbd>4</kbd> pick upgrade · <kbd>R</kbd> reroll</li>
+      </ul>
+      <button class="btn" data-back>Back</button>
+    </div>
+  </div>
+
+  <!-- Options -->
+  <div id="options" class="screen hidden">
+    <div class="panel">
+      <h2>Options</h2>
+      <div class="options-list">
+        <label class="opt"><span>Aiming</span><button class="btn small" id="opt-aim"></button></label>
+        <label class="opt"><span>Sound</span><button class="btn small" id="opt-sound"></button></label>
+        <label class="opt"><span>Damage numbers</span><button class="btn small" id="opt-dmg"></button></label>
+        <label class="opt"><span>Screen shake</span><button class="btn small" id="opt-shake"></button></label>
+      </div>
+      <button class="btn" data-back>Back</button>
+    </div>
+  </div>
+
+  <!-- Meta shop -->
+  <div id="shop" class="screen hidden">
+    <div class="panel wide">
+      <div class="shop-head">
+        <h2>The Armory</h2>
+        <div class="gold-pill large">🪙 <span class="gold-amt">0</span></div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="training">Training</button>
+        <button class="tab" data-tab="techniques">Javelin Techniques</button>
+        <button class="tab" data-tab="records">Hall of Records</button>
+      </div>
+      <div id="shop-body" class="shop-grid"></div>
+      <div class="shop-foot">
+        <button class="btn small ghost" id="btn-refund">Refund training</button>
+        <button class="btn" data-back>Back</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Level up -->
+  <div id="levelup" class="screen modal hidden">
+    <div class="panel wide">
+      <h2 class="levelup-title">LEVEL UP!</h2>
+      <p class="sub">Choose a new trick for Johnny</p>
+      <div id="cards" class="cards"></div>
+      <div class="levelup-actions">
+        <button class="btn small" id="btn-reroll">🎲 Reroll (<span id="reroll-n">0</span>)</button>
+        <button class="btn small ghost" id="btn-skip">Skip (+heal, +gold)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chest -->
+  <div id="chest" class="screen modal hidden">
+    <div class="panel">
+      <h2 class="chest-title">🎁 Treasure!</h2>
+      <div id="chest-items" class="chest-items"></div>
+      <button class="btn big" id="btn-chest">Excellent!</button>
+    </div>
+  </div>
+
+  <!-- Pause -->
+  <div id="pause" class="screen modal hidden">
+    <div class="panel wide">
+      <h2>Paused</h2>
+      <div class="pause-cols">
+        <div>
+          <h3>Javelin Stats</h3>
+          <div id="pause-stats" class="stat-list"></div>
+        </div>
+        <div>
+          <h3>Build</h3>
+          <div id="pause-build" class="pause-build"></div>
+        </div>
+      </div>
+      <div class="menu-buttons row">
+        <button class="btn big" id="btn-resume">Resume</button>
+        <button class="btn" id="btn-pause-options">Options</button>
+        <button class="btn ghost" id="btn-quit">Give up (keep gold)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game over -->
+  <div id="gameover" class="screen hidden">
+    <div class="panel">
+      <h2 id="go-title">Johnny has fallen</h2>
+      <div id="go-stats" class="go-stats"></div>
+      <div class="menu-buttons row">
+        <button class="btn big" id="btn-again">Run it back</button>
+        <button class="btn" id="btn-go-shop">🏛️ Armory</button>
+        <button class="btn ghost" id="btn-go-menu">Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/util.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/upgrades.js"></script>
+  <script src="js/enemies.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

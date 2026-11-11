@@ -1,0 +1,399 @@
+// DOM menus, HUD and modal screens.
+'use strict';
+
+JJ.UI = class UI {
+  constructor() {
+    this.$ = (id) => document.getElementById(id);
+    this.screens = ['menu', 'howto', 'options', 'shop', 'levelup', 'chest', 'pause', 'gameover'];
+    this.returnTo = 'menu';
+    this.shopTab = 'training';
+    this.choices = [];
+    this.hudCache = {};
+    this.lastBuildKey = '';
+    this.bindButtons();
+  }
+
+  attach(game) {
+    this.game = game;
+  }
+
+  show(id) {
+    for (const s of this.screens) this.$(s).classList.toggle('hidden', s !== id);
+  }
+
+  hideAll() {
+    for (const s of this.screens) this.$(s).classList.add('hidden');
+  }
+
+  click(id, fn) {
+    this.$(id).addEventListener('click', () => {
+      JJ.Audio.resume();
+      JJ.Audio.sfx.click();
+      fn();
+    });
+  }
+
+  bindButtons() {
+    this.click('btn-play', () => this.startRun());
+    this.click('btn-shop', () => this.openShop('menu'));
+    this.click('btn-howto', () => { this.returnTo = 'menu'; this.show('howto'); });
+    this.click('btn-options', () => this.openOptions('menu'));
+    document.querySelectorAll('[data-back]').forEach((b) =>
+      b.addEventListener('click', () => {
+        JJ.Audio.sfx.click();
+        this.back();
+      }),
+    );
+    this.click('opt-aim', () => this.toggleSetting('aim'));
+    this.click('opt-sound', () => this.toggleSetting('sound'));
+    this.click('opt-dmg', () => this.toggleSetting('damageNumbers'));
+    this.click('opt-shake', () => this.toggleSetting('shake'));
+    document.querySelectorAll('.tab').forEach((t) =>
+      t.addEventListener('click', () => {
+        JJ.Audio.sfx.click();
+        this.shopTab = t.dataset.tab;
+        this.renderShop();
+      }),
+    );
+    this.click('btn-refund', () => {
+      if (!confirm('Refund all Training ranks for their full gold cost?')) return;
+      const n = JJ.Save.refundMeta();
+      this.toast(`Refunded 🪙 ${n}`);
+      this.renderShop();
+    });
+    this.click('btn-reroll', () => this.doReroll());
+    this.click('btn-skip', () => {
+      this.game.skipLevel();
+      this.hideAll();
+    });
+    this.click('btn-chest', () => {
+      this.game.closeChest();
+      this.hideAll();
+    });
+    this.click('pausebtn', () => this.togglePause());
+    this.click('btn-resume', () => this.togglePause());
+    this.click('btn-pause-options', () => this.openOptions('pause'));
+    this.click('btn-quit', () => {
+      this.hideAll();
+      this.game.state = 'playing';
+      this.game.endRun(false);
+    });
+    this.click('btn-again', () => this.startRun());
+    this.click('btn-go-shop', () => this.openShop('gameover-menu'));
+    this.click('btn-go-menu', () => this.openMenu());
+
+    JJ.Input.onPress((k) => {
+      const g = this.game;
+      if (!g) return;
+      if ((k === 'escape' || k === 'p') && (g.state === 'playing' || g.state === 'paused')) {
+        if (!this.$('options').classList.contains('hidden')) return this.back();
+        this.togglePause();
+      } else if (g.state === 'levelup') {
+        const n = parseInt(k, 10);
+        if (n >= 1 && n <= this.choices.length) this.pick(n - 1);
+        if (k === 'r') this.doReroll();
+      } else if (g.state === 'chest' && (k === 'enter' || k === ' ')) {
+        this.$('btn-chest').click();
+      } else if (g.state === 'idle' && k === 'enter' && !this.$('menu').classList.contains('hidden')) {
+        this.startRun();
+      }
+    });
+  }
+
+  back() {
+    if (this.returnTo === 'pause') this.show('pause');
+    else if (this.returnTo === 'gameover-menu') this.openMenu();
+    else this.openMenu();
+  }
+
+  openMenu() {
+    if (this.game) this.game.state = 'idle';
+    this.$('hud').classList.add('hidden');
+    this.show('menu');
+    this.refreshGold();
+    const st = JJ.Save.data.stats;
+    this.$('records').innerHTML = st.runs
+      ? `Best survival: <b>${JJ.formatTime(st.bestTime)}</b> · Runs: <b>${st.runs}</b> · Dragons slain: <b>${st.wins}</b>`
+      : 'The monsters are coming. Johnny has javelins.';
+  }
+
+  refreshGold() {
+    document.querySelectorAll('.gold-amt').forEach((el) => (el.textContent = JJ.formatNum(JJ.Save.data.gold)));
+  }
+
+  startRun() {
+    JJ.Audio.resume();
+    JJ.Audio.setEnabled(JJ.Save.data.settings.sound);
+    this.hideAll();
+    this.$('hud').classList.remove('hidden');
+    this.$('toasts').innerHTML = '';
+    this.lastBuildKey = '';
+    this.hudCache = {};
+    this.game.start();
+    this.toast('Survive! Javelins are thrown automatically.', 3);
+  }
+
+  // ------------------------------------------------------------ options
+  openOptions(from) {
+    this.returnTo = from;
+    this.renderOptions();
+    this.show('options');
+  }
+
+  toggleSetting(key) {
+    const s = JJ.Save.data.settings;
+    if (key === 'aim') s.aim = s.aim === 'auto' ? 'mouse' : 'auto';
+    else s[key] = !s[key];
+    JJ.Audio.setEnabled(s.sound);
+    JJ.Save.save();
+    this.renderOptions();
+  }
+
+  renderOptions() {
+    const s = JJ.Save.data.settings;
+    this.$('opt-aim').textContent = s.aim === 'auto' ? '🎯 Auto' : '🖱️ Mouse';
+    this.$('opt-sound').textContent = s.sound ? 'On' : 'Off';
+    this.$('opt-dmg').textContent = s.damageNumbers ? 'On' : 'Off';
+    this.$('opt-shake').textContent = s.shake ? 'On' : 'Off';
+  }
+
+  // ------------------------------------------------------------ shop
+  openShop(from) {
+    this.returnTo = from;
+    this.show('shop');
+    this.renderShop();
+  }
+
+  renderShop() {
+    this.refreshGold();
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === this.shopTab));
+    const body = this.$('shop-body');
+    const S = JJ.Save;
+    const gold = S.data.gold;
+    this.$('btn-refund').classList.toggle('hidden', this.shopTab !== 'training');
+
+    if (this.shopTab === 'training') {
+      body.innerHTML = JJ.META.map((m) => {
+        const lvl = S.metaLevel(m.id);
+        const maxed = lvl >= m.max;
+        const cost = S.metaCost(m);
+        const pips = Array.from({ length: m.max }, (_, i) => `<span class="pip ${i < lvl ? 'on' : ''}"></span>`).join('');
+        return `<div class="shop-item ${maxed ? 'maxed' : ''}">
+          <div class="si-top"><span class="si-icon">${m.icon}</span><div><div class="si-name">${m.name}</div><div class="pips">${pips}</div></div></div>
+          <div class="si-desc">${m.desc}</div>
+          <button class="btn small" data-buy="${m.id}" ${maxed || gold < cost ? 'disabled' : ''}>${maxed ? 'MAXED' : `Train · 🪙 ${cost}`}</button>
+        </div>`;
+      }).join('');
+    } else if (this.shopTab === 'techniques') {
+      body.innerHTML = JJ.UNLOCKS.map((un) => {
+        const u = JJ.UPGRADES_BY_ID[un.id];
+        const owned = S.isUnlocked(un.id);
+        return `<div class="shop-item ${owned ? 'maxed' : ''}">
+          <div class="si-top"><span class="si-icon">${u.icon}</span><div class="si-name">${u.name}</div></div>
+          <div class="si-desc">${u.desc(1)}<br><i>Adds this card to the level-up pool.</i></div>
+          <button class="btn small" data-unlock="${un.id}" ${owned || gold < un.cost ? 'disabled' : ''}>${owned ? 'LEARNED' : `Learn · 🪙 ${un.cost}`}</button>
+        </div>`;
+      }).join('');
+    } else {
+      const st = S.data.stats;
+      const legends = JJ.UPGRADES.filter((u) => u.kind === 'legendary');
+      body.innerHTML = `<div class="records-grid" style="grid-column:1/-1">
+        <div>Runs</div><div>${st.runs}</div>
+        <div>Dragons slain</div><div>${st.wins}</div>
+        <div>Best survival time</div><div>${JJ.formatTime(st.bestTime)}</div>
+        <div>Highest level</div><div>${st.bestLevel}</div>
+        <div>Monsters skewered</div><div>${JJ.formatNum(st.totalKills)}</div>
+        <div>Bosses felled</div><div>${st.bossKills}</div>
+        <div class="legend-list"><h3>Legendary Evolutions discovered</h3>${legends
+          .map((u) => {
+            const found = st.legendaries[u.id];
+            const req = Object.entries(u.requires)
+              .map(([k, v]) => `${JJ.UPGRADES_BY_ID[k].name} ${v}`)
+              .join(' + ');
+            return found
+              ? `<span class="lg found" title="${req}">${u.icon} ${u.name}</span>`
+              : `<span class="lg unknown" title="Hint: ${req}">❓ ???</span>`;
+          })
+          .join('')}<p class="si-desc">Hover an undiscovered legendary for a hint.</p></div>
+      </div>`;
+    }
+
+    body.querySelectorAll('[data-buy]').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (S.buyMeta(b.dataset.buy)) JJ.Audio.sfx.coin();
+        this.renderShop();
+      }),
+    );
+    body.querySelectorAll('[data-unlock]').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (S.buyUnlock(b.dataset.unlock)) JJ.Audio.sfx.chest();
+        this.renderShop();
+      }),
+    );
+  }
+
+  // ------------------------------------------------------------ in-run modals
+  cardHtml(u, i) {
+    const g = this.game;
+    const cur = u.id.startsWith('_') ? 0 : g.levelOf(u.id);
+    const next = cur + 1;
+    const legendary = u.kind === 'legendary';
+    const lvlText = legendary ? '★ Legendary Evolution ★' : cur === 0 ? 'New!' : `Lv ${cur} → ${next}${next === u.max ? ' (MAX)' : ''}`;
+    return `<button class="card ${legendary ? 'legendary' : ''}" data-idx="${i}">
+      <kbd>${i + 1}</kbd>
+      <div class="card-icon">${u.icon}</div>
+      <div>
+        <div class="card-name">${u.name}</div>
+        <div class="card-lvl">${lvlText}</div>
+      </div>
+      <div class="card-desc">${u.desc(next)}</div>
+    </button>`;
+  }
+
+  showLevelUp(choices) {
+    this.choices = choices;
+    const cards = this.$('cards');
+    cards.innerHTML = choices.map((u, i) => this.cardHtml(u, i)).join('');
+    cards.querySelectorAll('.card').forEach((c) =>
+      c.addEventListener('click', () => this.pick(parseInt(c.dataset.idx, 10))),
+    );
+    this.$('reroll-n').textContent = this.game.rerolls;
+    this.$('btn-reroll').disabled = this.game.rerolls <= 0;
+    this.show('levelup');
+    if (choices.some((u) => u.kind === 'legendary')) JJ.Audio.sfx.legendary();
+  }
+
+  pick(i) {
+    const u = this.choices[i];
+    if (!u || this.game.state !== 'levelup') return;
+    JJ.Audio.sfx.click();
+    this.game.chooseUpgrade(u);
+    this.hideAll();
+    if (u.kind === 'legendary') this.toast(`${u.icon} ${u.name} unleashed!`, 3);
+  }
+
+  doReroll() {
+    const c = this.game.reroll();
+    if (c) this.showLevelUp(c);
+  }
+
+  showChest(granted, gold) {
+    const items = this.$('chest-items');
+    items.innerHTML =
+      granted
+        .map(({ u, level }, i) => `<div class="chest-item ${u.kind === 'legendary' ? 'legendary' : ''}" style="animation-delay:${i * 0.25}s">
+          <span class="ci-icon">${u.icon}</span>
+          <div><div class="ci-name">${u.name}</div><div class="ci-lvl">${u.kind === 'legendary' ? '★ LEGENDARY ★' : `Level ${level}`}</div></div>
+        </div>`)
+        .join('') + `<div class="chest-item" style="animation-delay:${granted.length * 0.25}s"><span class="ci-icon">🪙</span><div class="ci-name">+${gold} gold</div></div>`;
+    this.show('chest');
+  }
+
+  togglePause() {
+    const g = this.game;
+    if (g.state === 'playing') {
+      g.state = 'paused';
+      this.renderPause();
+      this.show('pause');
+    } else if (g.state === 'paused') {
+      g.state = 'playing';
+      this.hideAll();
+    }
+  }
+
+  renderPause() {
+    const g = this.game, s = g.stats;
+    const perVolley = s.count * (s.thousand ? 2 : 1) * s.dirs;
+    const rows = [
+      ['Damage', s.dmg.toFixed(1)],
+      ['Javelins per volley', perVolley],
+      ['Volleys per second', (1 / s.interval).toFixed(2)],
+      ['Pierce', s.pierce === Infinity ? '∞' : s.pierce],
+      ['Ricochets', s.bounce],
+      ['Javelin size', `${Math.round(s.size * 100)}%`],
+      ['Crit chance', `${Math.round(s.crit * 100)}%`],
+      ['Crit damage', `x${s.critMult.toFixed(2)}`],
+      ['Move speed', Math.round(s.speed)],
+      ['Armor', s.armor],
+      ['Regen', `${s.regen.toFixed(1)}/s`],
+      ['Rerolls left', g.rerolls],
+      ['Phoenix Feather', g.revive ? 'Ready' : '—'],
+    ];
+    this.$('pause-stats').innerHTML = rows.map(([a, b]) => `<div>${a}</div><div>${b}</div>`).join('');
+    this.$('pause-build').innerHTML = g.order.length
+      ? g.order
+          .map((id) => {
+            const u = JJ.UPGRADES_BY_ID[id];
+            const l = g.levelOf(id);
+            return `<div class="pb-row ${u.kind === 'legendary' ? 'legendary' : ''}"><span class="pb-icon">${u.icon}</span><span class="pb-name">${u.name}</span><span class="pb-lvl">${u.kind === 'legendary' ? '★' : `${l}/${u.max}`}</span></div>`;
+          })
+          .join('')
+      : '<i>Nothing yet. Go collect some XP!</i>';
+  }
+
+  showGameOver(r) {
+    this.$('hud').classList.add('hidden');
+    this.$('go-title').textContent = r.won ? '🏆 VICTORY! The Dragon is slain!' : '💀 Johnny has fallen';
+    const legends = r.legendaries.map((id) => JJ.UPGRADES_BY_ID[id].icon + ' ' + JJ.UPGRADES_BY_ID[id].name).join(', ');
+    this.$('go-stats').innerHTML = `
+      <div>Survived</div><div>${JJ.formatTime(r.time)}</div>
+      <div>Level reached</div><div>${r.level}</div>
+      <div>Monsters skewered</div><div>${JJ.formatNum(r.kills)}</div>
+      ${legends ? `<div>Legendaries</div><div>${legends}</div>` : ''}
+      <div>Gold collected</div><div>🪙 ${r.gold}</div>
+      <div>Survival bonus</div><div>🪙 ${r.bonus}</div>
+      <div class="total">Total banked</div><div class="total">🪙 ${r.total}</div>
+      ${r.newBest ? '<div class="new-best" style="grid-column:1/-1">New best survival time!</div>' : ''}`;
+    setTimeout(() => this.show('gameover'), r.won ? 200 : 900);
+  }
+
+  toast(msg, dur = 2.2) {
+    const box = this.$('toasts');
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = msg;
+    box.appendChild(el);
+    while (box.children.length > 4) box.firstChild.remove();
+    setTimeout(() => el.remove(), dur * 1000);
+  }
+
+  // ------------------------------------------------------------ HUD
+  set(id, val, prop = 'textContent') {
+    if (this.hudCache[id + prop] === val) return;
+    this.hudCache[id + prop] = val;
+    if (prop === 'width') this.$(id).style.width = val;
+    else this.$(id)[prop] = val;
+  }
+
+  updateHUD() {
+    const g = this.game;
+    if (!g || !g.player || g.state === 'idle' || g.state === 'over') return;
+    const p = g.player, s = g.stats;
+    this.set('xpfill', `${Math.min(100, (p.xp / p.xpNext) * 100).toFixed(1)}%`, 'width');
+    this.set('lvl', `LV ${p.level}`);
+    this.set('hpfill', `${JJ.clamp((p.hp / s.maxHp) * 100, 0, 100).toFixed(1)}%`, 'width');
+    this.set('hptext', `${Math.ceil(Math.max(0, p.hp))} / ${Math.round(s.maxHp)}`);
+    this.set('timer', JJ.formatTime(g.t));
+    this.set('kills', JJ.formatNum(g.kills));
+    this.set('gold', JJ.formatNum(g.gold));
+
+    const buildKey = g.order.map((id) => id + g.levelOf(id)).join();
+    if (buildKey !== this.lastBuildKey) {
+      this.lastBuildKey = buildKey;
+      this.$('build').innerHTML = g.order
+        .map((id) => {
+          const u = JJ.UPGRADES_BY_ID[id];
+          const l = g.levelOf(id);
+          return `<div class="bicon ${u.kind === 'legendary' ? 'legendary' : ''}" title="${u.name}">${u.icon}${u.kind === 'legendary' ? '' : `<small>${l}</small>`}</div>`;
+        })
+        .join('');
+    }
+
+    const boss = g.bosses[0];
+    this.$('bossbar').classList.toggle('hidden', !boss);
+    if (boss) {
+      this.set('bossname', JJ.ENEMIES[boss.type].name);
+      this.set('bossfill', `${Math.max(0, (boss.hp / boss.maxHp) * 100).toFixed(1)}%`, 'width');
+    }
+  }
+};
