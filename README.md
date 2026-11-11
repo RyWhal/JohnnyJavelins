@@ -4,15 +4,23 @@ A top-down, browser-based survival roguelite. Johnny is surrounded by endless ho
 
 ## Play
 
-No build step and no dependencies. Open `index.html` in a modern browser, or serve the folder:
+Live at **https://javelins.rjpw.space**.
+
+No build step and no dependencies. Open `public/index.html` in a modern browser, or serve the folder:
 
 ```bash
-python3 -m http.server 8000
+python3 -m http.server 8000 --directory public
 ```
 
 Then visit http://localhost:8000.
 
-The game also works on GitHub Pages: enable Pages for the repository's root.
+## Deploy
+
+The site is served as a Cloudflare Worker with static assets (`wrangler.jsonc`), on the custom domain `javelins.rjpw.space`:
+
+```bash
+npx wrangler deploy
+```
 
 ## Controls
 
@@ -45,16 +53,16 @@ Progress is saved in your browser's `localStorage`.
 
 | File | Purpose |
 | --- | --- |
-| `index.html`, `css/style.css` | Page shell, HUD and menu styling |
-| `js/util.js` | Helpers and the spatial grid used for collisions |
-| `js/audio.js` | Procedural WebAudio sound effects |
-| `js/save.js` | Persistent gold, Armory items, unlocks and records |
-| `js/upgrades.js` | In-run upgrade cards and legendary evolutions |
-| `js/enemies.js` | Monster stats, wave schedule, scripted events and monster drawing |
-| `js/input.js` | Keyboard, mouse and touch joystick |
-| `js/game.js` | Simulation: Johnny, javelins, monsters, pickups, leveling |
-| `js/render.js` | Canvas rendering |
-| `js/ui.js` | Menus, HUD, level-up, chest, pause and game-over screens |
-| `js/main.js` | Boot and main loop |
+| `public/index.html`, `public/css/style.css` | Page shell, HUD and menu styling |
+| `public/js/util.js` | Helpers and the spatial grid used for collisions |
+| `public/js/audio.js` | Procedural WebAudio sound effects |
+| `public/js/save.js` | Persistent gold, Armory items, unlocks and records |
+| `public/js/upgrades.js` | In-run upgrade cards and legendary evolutions |
+| `public/js/enemies.js` | Monster stats, wave schedule, scripted events and monster drawing |
+| `public/js/input.js` | Keyboard, mouse and touch joystick |
+| `public/js/game.js` | Simulation: Johnny, javelins, monsters, pickups, leveling |
+| `public/js/render.js` | Canvas rendering |
+| `public/js/ui.js` | Menus, HUD, level-up, chest, pause and game-over screens |
+| `public/js/main.js` | Boot and main loop |
 
-All art is drawn procedurally on a canvas, so there are no image or audio assets.
+`wrangler.jsonc` holds the Cloudflare deploy config. All art is drawn procedurally on a canvas, so there are no image or audio assets.

@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "johnny-javelins",
+  "compatibility_date": "2025-09-01",
+  // Static site: everything is served straight from Workers Static Assets.
+  "assets": {
+    "directory": "./public"
+  },
+  "routes": [
+    { "pattern": "javelins.rjpw.space", "custom_domain": true }
+  ]
+}
