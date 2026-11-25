@@ -306,7 +306,13 @@ kbd {
   height: 16px; background: #1a0e0a;
   border: 3px solid var(--iron-dark); box-shadow: 0 0 0 2px var(--iron); border-radius: 2px; overflow: hidden;
 }
-#bossfill { height: 100%; width: 100%; background: linear-gradient(180deg, #ff8a7a 0 3px, #d42a2a 3px 65%, #7a0a0a 65%); }
+#bossbar .bar { position: relative; }
+#bosstrail { position: absolute; left: 0; top: 0; height: 100%; width: 100%; background: #fff0c8; transition: width 0.5s ease-in 0.25s; }
+#bossbar.hit { animation: barHit 0.15s linear; }
+@keyframes barHit { 0%, 100% { margin-left: 0; } 25% { margin-left: -4px; } 75% { margin-left: 4px; } }
+#bossbar.enraged #bossname { animation: rage 0.5s ease-in-out infinite alternate; }
+@keyframes rage { from { color: var(--danger); } to { color: #fff; text-shadow: 0 0 10px #ff2a1a, 2px 2px 0 #000; } }
+#bossfill { position: relative; height: 100%; width: 100%; background: linear-gradient(180deg, #ff8a7a 0 3px, #d42a2a 3px 65%, #7a0a0a 65%); }
 
 #toasts {
   position: fixed; top: 94px; left: 50%; transform: translateX(-50%);
@@ -339,6 +345,29 @@ kbd {
 @keyframes bump { 0% { transform: scale(1.35); color: #fff; } 100% { transform: scale(1); } }
 .counter span { display: inline-block; }
 .go-stats .total.counting { color: #fff3b0; }
+
+#timer.pulse { animation: timerPulse 0.9s ease-out; }
+@keyframes timerPulse { 0% { transform: translateX(-50%) scale(1.6); color: #ffd34d; } 100% { transform: translateX(-50%) scale(1); } }
+/* Rotating sunburst behind the level-up choice. */
+#levelup { overflow: hidden; }
+#levelup::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 180vmax; height: 180vmax;
+  margin: -90vmax 0 0 -90vmax;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 211, 77, 0.13) 0deg 9deg, transparent 9deg 18deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, transparent 55%);
+  mask-image: radial-gradient(circle, #000 0%, transparent 55%);
+  animation: sunburst 24s linear infinite;
+  pointer-events: none;
+}
+#levelup > .panel { position: relative; z-index: 1; }
+@keyframes sunburst { to { transform: rotate(360deg); } }
+.chest-item.reel .ci-icon { filter: blur(0.6px) brightness(1.2); }
+.chest-item.reel .ci-name { color: var(--muted); }
+.chest-item.landed { animation: land 0.35s cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes land { 0% { transform: scale(1.12); background: rgba(255, 230, 150, 0.35); } 100% { transform: none; } }
 
 /* ---------------- Level up: parchment cards ---------------- */
 .levelup-title { font-size: 46px; animation: pulse 0.8s infinite alternate; }

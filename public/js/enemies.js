@@ -582,8 +582,9 @@ JJ.drawEnemyOverlays = (ctx, e, time, px, py, classic) => {
       ctx.fill();
       ctx.stroke();
     }
-    ctx.strokeStyle = `rgba(255,60,40,${0.25 + 0.15 * Math.sin(time * 4)})`;
-    ctx.lineWidth = 3;
+    const rage = e.enragedShown;
+    ctx.strokeStyle = `rgba(255,60,40,${(rage ? 0.5 : 0.25) + (rage ? 0.35 : 0.15) * Math.sin(time * (rage ? 12 : 4))})`;
+    ctx.lineWidth = rage ? 6 : 3;
     ctx.beginPath();
     ctx.arc(e.x, e.y, r * 1.25, 0, JJ.TAU);
     ctx.stroke();
@@ -651,6 +652,8 @@ JJ.drawEnemy = (ctx, e, time, px, py) => {
   }
   if (e.lungeT > 0) sy *= 0.82;
   if (e.windupT > 0) { sx *= 1.08; sy *= 0.9; }
+  // Pop into existence.
+  if (e.spawnT > 0) { const k = JJ.easeOutBack(1 - e.spawnT / 0.3); sx *= k; sy *= k; }
   // Squash on impact, springing back.
   if (e.hitT > 0) { const k = e.hitT / 0.14; sx *= 1 + 0.28 * k; sy *= 1 - 0.22 * k; }
   // Sprites face right; flip toward travel (or toward Johnny when still).

@@ -88,7 +88,17 @@ JJ.UI = class UI {
       this.game.skipLevel();
       this.hideAll();
     });
+    this.$('chest-items').addEventListener('click', () => this.stopReels(true));
     this.click('btn-chest', () => {
+      // First click finishes any reels still spinning.
+      if ((this.reels || []).some((r) => r)) {
+        const spinning = this.$('chest-items').querySelector('.reel');
+        if (spinning) {
+          this.stopReels(true);
+          return;
+        }
+      }
+      this.stopReels();
       this.game.closeChest();
       this.hideAll();
     });
@@ -452,16 +462,55 @@ JJ.UI = class UI {
     if (c) this.showLevelUp(c);
   }
 
+  // Treasure reveal, slot-machine style: each reel spins through upgrade
+  // icons and lands on its prize one after another (click to skip).
   showChest(granted, gold) {
     const items = this.$('chest-items');
+    this.stopReels();
     items.innerHTML =
       granted
-        .map(({ u, level }, i) => `<div class="chest-item ${u.kind === 'legendary' ? 'legendary' : ''}" style="animation-delay:${i * 0.25}s">
-          <span class="ci-icon">${JJ.icon(JJ.upgradeIconName(u.id), 36)}</span>
-          <div><div class="ci-name">${u.name}</div><div class="ci-lvl">${u.kind === 'legendary' ? '★ LEGENDARY ★' : `Level ${level}`}</div></div>
+        .map(({ u }, i) => `<div class="chest-item reel ${u.kind === 'legendary' ? 'legend-pending' : ''}" style="animation-delay:${i * 0.12}s" data-i="${i}">
+          <span class="ci-icon"></span>
+          <div><div class="ci-name">???</div><div class="ci-lvl">&nbsp;</div></div>
         </div>`)
-        .join('') + `<div class="chest-item" style="animation-delay:${granted.length * 0.25}s"><span class="ci-icon">${JJ.icon('i_gold', 36)}</span><div class="ci-name">+${gold} gold</div></div>`;
+        .join('') + `<div class="chest-item reel" data-gold="1" style="animation-delay:${granted.length * 0.12}s"><span class="ci-icon">${JJ.icon('i_gold', 36)}</span><div class="ci-name">???</div></div>`;
     this.show('chest');
+    const pool = JJ.UPGRADES.map((x) => JJ.upgradeIconName(x.id));
+    const rows = [...items.querySelectorAll('.chest-item')];
+    const land = (row, i) => {
+      if (row.dataset.done) return;
+      row.dataset.done = '1';
+      row.classList.remove('reel');
+      if (row.dataset.gold) {
+        row.querySelector('.ci-name').textContent = `+${gold} gold`;
+        JJ.Audio.sfx.coin();
+      } else {
+        const { u, level } = granted[i];
+        row.querySelector('.ci-icon').innerHTML = JJ.icon(JJ.upgradeIconName(u.id), 36);
+        row.querySelector('.ci-name').textContent = u.name;
+        row.querySelector('.ci-lvl').textContent = u.kind === 'legendary' ? '★ LEGENDARY ★' : `Level ${level}`;
+        if (u.kind === 'legendary') row.classList.add('legendary');
+        JJ.Audio.sfx.reelLand(u.kind === 'legendary');
+      }
+      this.retrigger(row, 'landed');
+    };
+    this.reels = rows.map((row, i) => {
+      const icon = row.querySelector('.ci-icon');
+      const spin = row.dataset.gold ? null : setInterval(() => {
+        icon.innerHTML = JJ.icon(JJ.choice(pool), 36);
+        JJ.Audio.sfx.reelTick();
+      }, 70);
+      const stop = setTimeout(() => {
+        clearInterval(spin);
+        land(row, i);
+      }, 550 + i * 420);
+      return { spin, stop, land: () => { clearInterval(spin); clearTimeout(stop); land(row, i); } };
+    });
+  }
+
+  stopReels(finish) {
+    for (const r of this.reels || []) (finish ? r.land() : (clearInterval(r.spin), clearTimeout(r.stop)));
+    if (!finish) this.reels = [];
   }
 
   togglePause() {
@@ -577,6 +626,10 @@ JJ.UI = class UI {
     else this.$(id)[prop] = val;
   }
 
+  bumpEl(id) {
+    this.retrigger(this.$(id), 'bump');
+  }
+
   // Restart a CSS animation class on an element.
   retrigger(el, cls) {
     el.classList.remove(cls);
@@ -609,6 +662,10 @@ JJ.UI = class UI {
     this.set('timer', JJ.formatTime(g.t));
     this.bumpSet('kills', JJ.formatNum(g.kills));
     this.bumpSet('gold', JJ.formatNum(g.gold));
+    if (g.minuteAt !== this.lastMinuteAt) {
+      this.lastMinuteAt = g.minuteAt;
+      if (g.minuteAt > 0) this.retrigger(this.$('timer'), 'pulse');
+    }
     if (g.levelFlashAt !== this.lastLevelFlash) {
       this.lastLevelFlash = g.levelFlashAt;
       if (g.levelFlashAt > 0) this.retrigger(this.$('xpbar'), 'flash');
@@ -630,7 +687,18 @@ JJ.UI = class UI {
     this.$('bossbar').classList.toggle('hidden', !boss);
     if (boss) {
       this.set('bossname', JJ.ENEMIES[boss.type].name);
-      this.set('bossfill', `${Math.max(0, (boss.hp / boss.maxHp) * 100).toFixed(1)}%`, 'width');
+      const bp = `${Math.max(0, (boss.hp / boss.maxHp) * 100).toFixed(1)}%`;
+      this.set('bossfill', bp, 'width');
+      this.set('bosstrail', bp, 'width');
+      if (this.lastBossHp !== undefined && boss.hp < this.lastBossHp - boss.maxHp * 0.004) {
+        const now = performance.now();
+        if (!this.bossShakeAt || now - this.bossShakeAt > 120) {
+          this.bossShakeAt = now;
+          this.retrigger(this.$('bossbar'), 'hit');
+        }
+      }
+      this.lastBossHp = boss.hp;
+      this.$('bossbar').classList.toggle('enraged', !!boss.enragedShown);
     }
   }
 };

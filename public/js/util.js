@@ -15,6 +15,14 @@ JJ.dist2 = (ax, ay, bx, by) => {
   return dx * dx + dy * dy;
 };
 JJ.easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+JJ.easeInCubic = (t) => t * t * t;
+JJ.easeOutBounce = (t) => {
+  const n = 7.5625, d = 2.75;
+  if (t < 1 / d) return n * t * t;
+  if (t < 2 / d) return n * (t -= 1.5 / d) * t + 0.75;
+  if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + 0.9375;
+  return n * (t -= 2.625 / d) * t + 0.984375;
+};
 JJ.easeOutBack = (t) => {
   const c1 = 1.9, c3 = c1 + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);

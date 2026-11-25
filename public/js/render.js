@@ -26,6 +26,7 @@ JJ.Renderer = class Renderer {
 
   render(time, dt) {
     const { ctx, game } = this;
+    this.lastDt = dt;
     const live = game.player && game.state !== 'idle';
     let cx, cy;
     if (live) {
@@ -59,7 +60,9 @@ JJ.Renderer = class Renderer {
       sy = JJ.rand(-game.shake, game.shake);
     }
 
-    const punch = live && JJ.Save.data.settings.shake ? game.punch : 0;
+    let punch = live && JJ.Save.data.settings.shake ? game.punch : 0;
+    // Slow push-in on Johnny when he falls.
+    if (live && game.deathAt) punch += 0.35 * JJ.easeOutCubic(Math.min(1, (time - game.deathAt) / 1.2));
     const z = this.zoom * (1 + punch) * this.dpr;
     const ox = this.dpr * (this.w / 2 + sx) - cx * z;
     const oy = this.dpr * (this.h / 2 + sy) - cy * z;
@@ -82,7 +85,9 @@ JJ.Renderer = class Renderer {
     this.lights = [];
     this.drawGround(cx, cy, time);
     if (this.hi) this.drawDecals();
+    this.applyDeathFilter(time);
     if (!live) {
+      this.drawMenuRain(time, dt);
       this.drawAtmosphere(time, dt, false);
       return this.drawScreenFx(time);
     }
@@ -425,8 +430,25 @@ JJ.Renderer = class Renderer {
   drawPlayer(time) {
     const { ctx } = this;
     const g = this.game, p = g.player;
-    if (p.inv > 0 && g.state === 'playing' && Math.floor(time * 20) % 2 === 0 && !g.won) return;
+    const dying = g.deathAt !== null && g.deathAt !== undefined;
+    if (!dying && p.inv > 0 && g.state === 'playing' && Math.floor(time * 20) % 2 === 0 && !g.won && g.hurtFlash <= 0.12) return;
     const x = p.x, y = p.y;
+    // Body transform around the feet: lean, throw squash/stretch, death topple.
+    ctx.save();
+    ctx.translate(x, y + 14);
+    let rot = p.lean || 0;
+    if (dying) {
+      const k = Math.min(1, (time - g.deathAt) / 0.6);
+      rot = (Math.cos(p.face) >= 0 ? -1 : 1) * (Math.PI / 2) * JJ.easeOutBounce(k);
+    }
+    ctx.rotate(rot);
+    if (p.throwAnim > 0) {
+      const k = p.throwAnim / 0.15; // 1 -> 0 over the throw
+      const sq = Math.sin(k * Math.PI) * 0.12;
+      ctx.scale(1 + sq, 1 - sq);
+    }
+    ctx.translate(-x, -(y + 14));
+    if (g.hurtFlash > 0.12 && !dying) ctx.filter = 'brightness(2.6) saturate(0.3)';
     const look = JJ.Save.data.johnny;
     const pull = p.throwAnim > 0 ? -10 * (p.throwAnim / 0.15) : 0;
     const a = p.face;
@@ -435,6 +457,9 @@ JJ.Renderer = class Renderer {
     this.javelinShape(gr.jx, gr.jy, a, 0.9, this.tipColor(), false);
     JJ.drawJohnny(ctx, look, x, y, { face: a, walk: p.walk, moving: p.moving, time, hand: { x: gr.gx, y: gr.gy } });
     JJ.drawJohnnyHand(ctx, look, gr.gx, gr.gy);
+    ctx.filter = 'none';
+    ctx.restore();
+    if (dying) return;
 
     // frenzy aura
     if (g.frenzyT > 0) {
@@ -682,6 +707,18 @@ JJ.Renderer = class Renderer {
       default: return false;
     }
     const grounded = k.type === 'chest';
+    // Motion streak while being vacuumed toward Johnny.
+    if (k.attract && k.spd > 260) {
+      const p = this.game.player;
+      const dx = k.x - p.x, dy = k.y - p.y, d = Math.hypot(dx, dy) || 1;
+      const len = Math.min(36, k.spd * 0.025);
+      ctx.strokeStyle = k.type === 'coin' ? 'rgba(255,211,77,0.55)' : k.value >= 10 ? 'rgba(255,110,140,0.5)' : 'rgba(140,210,255,0.5)';
+      ctx.lineWidth = size * 0.45;
+      ctx.beginPath();
+      ctx.moveTo(k.x, k.y);
+      ctx.lineTo(k.x + (dx / d) * len, k.y + (dy / d) * len);
+      ctx.stroke();
+    }
     // small ground shadow
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
@@ -756,6 +793,11 @@ JJ.Renderer = class Renderer {
       }
       ctx.globalAlpha = 1 - q.t / q.life;
       ctx.fillStyle = q.color;
+      if (q.puff) {
+        const r = q.size * (1 + (q.t / q.life) * 1.5);
+        ctx.fillRect(q.x - r / 2, q.y - r / 2, r, r);
+        continue;
+      }
       ctx.fillRect(q.x - q.size / 2, q.y - q.size / 2, q.size, q.size);
     }
     ctx.globalAlpha = 1;
@@ -786,13 +828,149 @@ JJ.Renderer = class Renderer {
       ctx.globalAlpha = 1 - (t.t / t.life) ** 3;
       // Numbers pop in big and settle.
       const pop = t.t < 0.09 ? 1.7 - (t.t / 0.09) * 0.7 : 1;
-      const px = Math.round((t.big ? 20 : 14) * pop);
+      const px = Math.round((t.huge ? 30 : t.big ? 20 : 14) * pop);
       ctx.font = `700 ${px}px 'Pixelify Sans', system-ui, sans-serif`;
       ctx.strokeText(t.text, t.x, t.y);
       ctx.fillStyle = t.color;
       ctx.fillText(t.text, t.x, t.y);
     }
     ctx.globalAlpha = 1;
+  }
+
+  // The world drains of colour when Johnny falls.
+  applyDeathFilter(time) {
+    const g = this.game;
+    let f = '';
+    if (g.deathAt && g.state === 'over') {
+      const k = Math.min(1, (time - g.deathAt) / 1.2);
+      f = `grayscale(${k.toFixed(2)}) brightness(${(1 - 0.3 * k).toFixed(2)})`;
+    }
+    if (f !== this.lastFilter) {
+      this.lastFilter = f;
+      this.canvas.style.filter = f;
+    }
+  }
+
+  // Title screen: Johnny's javelins rain down and thunk into the ground.
+  drawMenuRain(time, dt) {
+    const { ctx } = this;
+    const look = JJ.Save.data.johnny;
+    this.menuJavs = this.menuJavs || [];
+    this.menuDust = this.menuDust || [];
+    const J = this.menuJavs, Dd = this.menuDust;
+    const { x: cx, y: cy } = this.cam;
+    const hw = this.game.viewW / 2, hh = this.game.viewH / 2;
+    this.menuRainT = (this.menuRainT || 0) - dt;
+    if (this.menuRainT <= 0) {
+      this.menuRainT = JJ.rand(0.2, 0.5);
+      // keep the middle (where the menu panel sits) mostly clear
+      let tx = cx + JJ.rand(-hw, hw) * 0.95;
+      if (Math.abs(tx - cx) < hw * 0.45) tx += (tx < cx ? -1 : 1) * hw * 0.45;
+      J.push({ tx, ty: cy + JJ.rand(-hh, hh) * 0.9, t: 0, land: 0.5, stuck: 0, tilt: JJ.rand(-0.35, 0.35) });
+    }
+    for (const j of J) {
+      j.t += dt;
+      const k = Math.min(1, j.t / j.land);
+      if (k >= 1 && !j.landed) {
+        j.landed = true;
+        for (let i = 0; i < 6; i++) Dd.push({ x: j.tx, y: j.ty, vx: JJ.rand(-60, 60), vy: JJ.rand(-40, 10), t: 0, life: 0.5 });
+      }
+      if (j.landed) j.stuck += dt;
+      if (j.stuck > 3) j.dead = true;
+      const h = (1 - k) * 600;
+      const ang = Math.PI / 2 - 0.3 + j.tilt * k;
+      ctx.globalAlpha = j.stuck > 2.4 ? 1 - (j.stuck - 2.4) / 0.6 : 1;
+      JJ.drawJavelin(ctx, j.tx + h * 0.3, j.ty - h - 12, ang, j.landed ? 0.9 : 1.1, '#dfe6ee', !j.landed, false, look);
+    }
+    ctx.globalAlpha = 1;
+    for (const d of Dd) {
+      d.t += dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      if (d.t > d.life) { d.dead = true; continue; }
+      ctx.fillStyle = `rgba(180,150,100,${0.6 * (1 - d.t / d.life)})`;
+      ctx.fillRect(d.x - 2, d.y - 2, 4 + d.t * 6, 4 + d.t * 6);
+    }
+    JJ.compact(J);
+    JJ.compact(Dd);
+  }
+
+  // Coins fly from where they were picked up into the gold counter.
+  drawFlyers(time) {
+    const { ctx, game } = this;
+    if (!game.flyers || !game.flyers.length || !JJ.Sprites.ready) return;
+    const el = document.getElementById('gold');
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const tx = r.left - 14, ty = r.top + r.height / 2;
+    const [z, , , , ox, oy] = this.worldTransform;
+    for (const f of game.flyers) {
+      if (f.sx === undefined) {
+        f.sx = (f.wx * z + ox) / this.dpr;
+        f.sy = (f.wy * z + oy) / this.dpr;
+      }
+      const k = (time - f.at) / 0.6;
+      if (k >= 1) {
+        f.dead = true;
+        game.ui.bumpEl && game.ui.bumpEl('gold');
+        continue;
+      }
+      const e = JJ.easeInCubic(k);
+      // arc up and over toward the counter
+      const mx = (f.sx + tx) / 2, my = Math.min(f.sy, ty) - 120;
+      const x = (1 - e) * (1 - e) * f.sx + 2 * (1 - e) * e * mx + e * e * tx;
+      const y = (1 - e) * (1 - e) * f.sy + 2 * (1 - e) * e * my + e * e * ty;
+      JJ.Sprites.draw(ctx, 'coin', x, y, 18 - 4 * e, { center: true, sx: Math.max(0.2, Math.abs(Math.cos(time * 12 + f.at))) });
+    }
+    JJ.compact(game.flyers);
+  }
+
+  // Red arcs at the screen edge pointing at what just hit Johnny.
+  drawDamageDirs() {
+    const { ctx, game } = this;
+    const R = Math.min(this.w, this.h) * 0.42;
+    for (const d of game.damageDirs) {
+      const age = game.realT - d.at;
+      if (age > 0.7) continue;
+      ctx.strokeStyle = `rgba(255,40,30,${0.7 * (1 - age / 0.7)})`;
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(this.w / 2, this.h / 2, R, d.ang - 0.28, d.ang + 0.28);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+  }
+
+  // Victory fireworks.
+  drawFireworks(time, dt) {
+    const { ctx, game } = this;
+    if (!game.wonAt || time - game.wonAt > 7) return;
+    this.fw = this.fw || [];
+    this.fwT = (this.fwT || 0) - dt;
+    if (this.fwT <= 0) {
+      this.fwT = JJ.rand(0.15, 0.4);
+      const x = JJ.rand(0.1, 0.9) * this.w, y = JJ.rand(0.1, 0.5) * this.h;
+      const color = JJ.choice(['#ffd34d', '#ff6b5a', '#7be06a', '#8fdcff', '#c58bff', '#ffffff']);
+      for (let i = 0; i < 36; i++) {
+        const a = (i / 36) * JJ.TAU, v = JJ.rand(120, 240);
+        this.fw.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: JJ.rand(0.8, 1.3), color });
+      }
+      JJ.Audio.sfx.firework();
+    }
+    for (const q of this.fw) {
+      q.t += dt;
+      if (q.t > q.life) { q.dead = true; continue; }
+      q.vy += 160 * dt;
+      q.vx *= 0.985;
+      q.x += q.vx * dt;
+      q.y += q.vy * dt;
+      ctx.globalAlpha = 1 - q.t / q.life;
+      ctx.fillStyle = q.color;
+      ctx.fillRect(q.x - 2, q.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+    JJ.compact(this.fw);
   }
 
   // Combo counter under the kill/gold counters, bumping on every kill.
@@ -963,9 +1141,12 @@ JJ.Renderer = class Renderer {
       ctx.fillStyle = g2;
       ctx.fillRect(0, 0, w, h);
     }
+    this.drawDamageDirs();
     this.drawCombo(time);
     this.drawCallout();
     this.drawBossIntro();
+    this.drawFlyers(time);
+    this.drawFireworks(time, this.lastDt || 0.016);
     if (game.frenzyT > 0) {
       ctx.strokeStyle = `rgba(255,120,30,${0.35 + 0.15 * Math.sin(time * 12)})`;
       ctx.lineWidth = 14;

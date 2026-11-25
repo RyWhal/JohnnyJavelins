@@ -93,6 +93,15 @@ JJ.Game = class Game {
     this.gemChainT = 0;
     this.heartbeatT = 0;
     this.levelFlashAt = -10;
+    this.damageDirs = [];
+    this.flyers = [];
+    this.burstStart = -10;
+    this.burstKills = 0;
+    this.burstShown = 0;
+    this.lastMinute = 0;
+    this.minuteAt = -10;
+    this.deathAt = null;
+    this.wonAt = null;
     this.biome = 'meadow';
     this.biomeTimer = 0;
   }
@@ -184,6 +193,12 @@ JJ.Game = class Game {
     if (this.gemChainT <= 0) this.gemChain = 0;
     this.t += dt;
     const p = this.player;
+    const minute = Math.floor(this.t / 60);
+    if (minute > this.lastMinute) {
+      this.lastMinute = minute;
+      this.minuteAt = this.realT;
+      JJ.Audio.sfx.bell();
+    }
     const s = this.stats;
 
     this.updatePlayer(dt);
@@ -248,6 +263,27 @@ JJ.Game = class Game {
       p.face = Math.atan2(mv.y, mv.x);
       p.walk += dt * 12;
     }
+    // Knockback from hits, decaying quickly.
+    if (p.kx || p.ky) {
+      p.x += p.kx * dt;
+      p.y += p.ky * dt;
+      const d = Math.exp(-dt * 10);
+      p.kx *= d;
+      p.ky *= d;
+      if (Math.abs(p.kx) + Math.abs(p.ky) < 2) p.kx = p.ky = 0;
+    }
+    // Lean into movement, and kick up dust while running.
+    p.lean = JJ.lerp(p.lean || 0, p.moving ? mv.x * 0.18 : 0, 1 - Math.exp(-dt * 10));
+    if (p.moving) {
+      p.dustT = (p.dustT || 0) - dt;
+      if (p.dustT <= 0 && this.particles.length < 700) {
+        p.dustT = 0.1;
+        const dust = JJ.BIOMES[this.biome].dust || 'rgba(190,170,130,0.55)';
+        for (let i = 0; i < 2; i++) {
+          this.particles.push({ x: p.x + JJ.rand(-5, 5), y: p.y + 13, vx: -mv.x * JJ.rand(20, 50) + JJ.rand(-15, 15), vy: -mv.y * JJ.rand(20, 50) - JJ.rand(5, 20), t: 0, life: JJ.rand(0.3, 0.45), color: dust, size: JJ.rand(3, 5), puff: true });
+        }
+      }
+    }
     p.inv -= dt;
     p.throwAnim = Math.max(0, p.throwAnim - dt);
     this.frenzyT = Math.max(0, this.frenzyT - dt);
@@ -311,6 +347,7 @@ JJ.Game = class Game {
     };
     if (d.patterns) e.timers = d.patterns.map((pt, i) => pt.every * (0.5 + 0.2 * i));
     e.maxHp = e.hp;
+    e.spawnT = 0.3;
     this.enemies.push(e);
     if (e.boss) this.bosses.push(e);
     return e;
@@ -952,6 +989,7 @@ JJ.Game = class Game {
       if (e.dead) continue;
       e.flash -= dt;
       if (e.hitT > 0) e.hitT -= dt;
+      if (e.spawnT > 0) e.spawnT -= dt;
       e.orbitCD -= dt;
       if (e.slowT > 0) e.slowT -= dt;
       if (e.burnT > 0) {
@@ -1061,7 +1099,7 @@ JJ.Game = class Game {
 
       // Contact damage
       const rr = e.r + p.r - 4;
-      if (JJ.dist2(e.x, e.y, p.x, p.y) < rr * rr) this.hurtPlayer(e.dmg);
+      if (JJ.dist2(e.x, e.y, p.x, p.y) < rr * rr) this.hurtPlayer(e.dmg, e.x, e.y);
     }
   }
 
@@ -1070,6 +1108,14 @@ JJ.Game = class Game {
   bossAI(e, dt, nx, ny, dist, spd) {
     const d = JJ.ENEMIES[e.type];
     const enraged = e.hp < e.maxHp * 0.5;
+    if (enraged && !e.enragedShown) {
+      e.enragedShown = true;
+      this.texts.push({ x: e.x, y: e.y - e.r * 1.8, vx: 0, vy: -40, g: 0, t: 0, life: 1.6, text: 'ENRAGED!', color: '#ff4a3a', big: true, huge: true });
+      this.effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r * 5, t: 0, life: 0.6, color: '#ff4a3a' });
+      this.shake = Math.max(this.shake, 10);
+      this.flash('#ff2a1a', 0.5);
+      JJ.Audio.sfx.roar();
+    }
     if (d.regen) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * d.regen * dt);
 
     if (e.spiral) {
@@ -1193,7 +1239,7 @@ JJ.Game = class Game {
       const rr = b.r + p.r - 3;
       if (JJ.dist2(b.x, b.y, p.x, p.y) < rr * rr) {
         b.dead = true;
-        this.hurtPlayer(b.dmg);
+        this.hurtPlayer(b.dmg, b.x - b.vx, b.y - b.vy);
       }
     }
   }
@@ -1202,6 +1248,26 @@ JJ.Game = class Game {
     e.dead = true;
     this.kills++;
     this.addCombo();
+    // Many kills in a blink (one volley / explosion) earn a multi-kill popup.
+    if (this.realT - this.burstStart > 0.25) {
+      this.burstStart = this.realT;
+      this.burstKills = 0;
+      this.burstShown = 0;
+    }
+    this.burstKills++;
+    const tier = [8, 15, 30, 60].filter((n) => this.burstKills >= n).length;
+    if (tier > this.burstShown) {
+      this.burstShown = tier;
+      if (this.texts.length < 150) {
+        this.texts = this.texts.filter((t) => !t.multi);
+        this.texts.push({
+          x: e.x, y: e.y - 20, vx: 0, vy: -70, g: 40, t: 0, life: 1.1, multi: true,
+          text: `${this.burstKills}x ${['', 'SKEWERED!', 'SHISH KEBAB!', 'IMPALEMENT!', 'MASSACRE!'][tier]}`,
+          color: ['', '#ffd34d', '#ffb02e', '#ff7a2a', '#ff3b2a'][tier], big: true, huge: true,
+        });
+      }
+      JJ.Audio.sfx.multi(tier);
+    }
     this.flingCorpse(e);
     const s = this.stats;
     const coinVal = 1 + Math.floor(this.t / 180);
@@ -1398,6 +1464,7 @@ JJ.Game = class Game {
       case 'coin':
         this.gold += k.value * s.goldMult;
         this.sparks(k.x, k.y, null, 3, '#ffd34d', 110);
+        if (this.flyers.length < 24) this.flyers.push({ wx: k.x, wy: k.y, at: performance.now() / 1000 });
         JJ.Audio.sfx.coin();
         break;
       case 'heart':
@@ -1440,9 +1507,17 @@ JJ.Game = class Game {
     if (leveled) this.levelBlast();
   }
 
-  hurtPlayer(dmg) {
+  hurtPlayer(dmg, sx, sy) {
     const p = this.player;
     if (p.inv > 0 || this.state !== 'playing') return;
+    if (sx !== undefined) {
+      // Knock Johnny away from the hit and mark where it came from.
+      const a = Math.atan2(p.y - sy, p.x - sx);
+      p.kx = (p.kx || 0) + Math.cos(a) * 260;
+      p.ky = (p.ky || 0) + Math.sin(a) * 260;
+      this.damageDirs.push({ ang: a + Math.PI, at: this.realT });
+      if (this.damageDirs.length > 6) this.damageDirs.shift();
+    }
     dmg = Math.max(1, dmg - this.stats.armor);
     p.hp -= dmg;
     p.inv = 0.45;
@@ -1609,6 +1684,8 @@ JJ.Game = class Game {
     if (this.state === 'over') return;
     won = won || this.won;
     this.state = 'over';
+    this.deathAt = won ? null : performance.now() / 1000;
+    this.wonAt = won ? performance.now() / 1000 : null;
     const S = JJ.Save;
     const st = S.data.stats;
     const runGold = Math.round(this.gold);

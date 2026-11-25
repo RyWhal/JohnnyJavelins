@@ -97,6 +97,35 @@ JJ.Audio = (() => {
       [1, 1.25, 1.5, 2].forEach((m, i) => tone(base * m, 0.16, 'square', 0.11, 0, i * 0.06));
       noise(0.3, 3000, 0.08, 1, 'highpass');
     },
+    roar() {
+      noise(0.8, 220, 0.4, 0.7, 'lowpass');
+      tone(110, 0.8, 'sawtooth', 0.22, -60);
+      tone(82, 0.9, 'square', 0.12, -30, 0.05);
+    },
+    multi(tier) {
+      const f = 523 * Math.pow(1.19, tier);
+      tone(f, 0.12, 'square', 0.12, 0);
+      tone(f * 1.5, 0.18, 'square', 0.1, 0, 0.07);
+      noise(0.2, 2500, 0.08, 2);
+    },
+    bell() {
+      [880, 1320, 1760].forEach((f, i) => tone(f, 1.2 - i * 0.3, 'sine', 0.12 / (i + 1)));
+      tone(440, 1.4, 'triangle', 0.06);
+    },
+    firework() {
+      if (limited('fw', 120)) return;
+      noise(0.5, 900, 0.25, 0.6, 'lowpass');
+      tone(1400 + Math.random() * 600, 0.3, 'sine', 0.05, -800);
+    },
+    reelTick() {
+      if (limited('reel', 60)) return;
+      tone(1200 + Math.random() * 400, 0.025, 'square', 0.04);
+    },
+    reelLand(legendary) {
+      tone(330, 0.12, 'square', 0.14, -100);
+      noise(0.1, 800, 0.12, 1);
+      if (legendary) [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.25, 'triangle', 0.13, 0, 0.05 + i * 0.07));
+    },
     heartbeat() {
       tone(70, 0.12, 'sine', 0.35, -20);
       tone(62, 0.14, 'sine', 0.28, -20, 0.17);
