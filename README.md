@@ -56,6 +56,10 @@ npx wrangler dev
 - **A boss every minute.** Crowned mini-bosses (Goblin Warchief, Gelatinous King, Alpha Wolf, Bone Colossus, Hexmother, Banshee, Troll Chieftain, Orc Warlord) fill the gaps between the big three: the Ogre Warlord (5:00), the Lich King (10:00) and the Ancient Dragon (15:00). Slay the dragon to win. Bosses are shielded until they're on screen, telegraph their charges, and enrage below half health.
 - **Adaptive difficulty.** A director watches how easily you're clearing the horde and toughens monsters when you're cruising. Boss health is sized from the damage you've actually been dealing to bosses, so fights stay meaningful however broken your build gets.
 
+## Game feel
+
+Hits squash monsters and throw sparks, crits ring out, spent javelins thunk into the ground, and kills fling bodies tumbling away while loot pops out and bounces. Big moments get hit-stop, screen shake, zoom punches and flashes (toggle with **Screen shake & flashes** in Options); bosses arrive with a letterboxed title card and die in slow motion. Chain kills to build a combo; milestones (Killing Spree, Rampage, Unstoppable, Godlike...) pay a one-time gold bonus per run. Levelling up releases a shockwave that shoves the horde back, gem pickups climb in pitch as you vacuum them up, and a heartbeat warns you when health runs low.
+
 ## The world
 
 The world is split into seven biomes with blended borders, each with its own pixel-art ground, low props, weather and favourite monsters: Greenhollow Meadow, the Darkwood, Sunscorch Dunes, the Frostlands, Murkmire Bog, the Barrow Fields and the Ashen Wastes. Ground features (dirt, leaf litter, dunes, ice sheets, bog water, stone paths, lava pools) are baked into the ground; props are kept low (rocks, flowers, mushrooms, stumps, cacti, tombstones...) since the camera looks straight down, and the Darkwood suggests its canopy with drifting leaf shadows instead of trees. Day turns to night over a 15-minute run, and the dynamic lighting picks up Johnny's torch, glowing javelins, explosions, lava, lantern mushrooms, candles and embers.

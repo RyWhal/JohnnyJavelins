@@ -74,11 +74,32 @@ JJ.Audio = (() => {
     },
     hit() {
       if (limited('hit', 45)) return;
-      tone(220 + Math.random() * 80, 0.05, 'square', 0.06, -80);
+      tone(200 + Math.random() * 120, 0.05, 'square', 0.06, -80);
+      noise(0.04, 2500 + Math.random() * 1500, 0.05, 3);
+    },
+    crit() {
+      if (limited('crit', 70)) return;
+      tone(900 + Math.random() * 200, 0.07, 'square', 0.07, 500);
+      noise(0.06, 4000, 0.07, 4);
     },
     kill() {
-      if (limited('kill', 60)) return;
-      tone(160, 0.08, 'triangle', 0.1, -100);
+      if (limited('kill', 55)) return;
+      tone(140 + Math.random() * 60, 0.09, 'triangle', 0.11, -100);
+      noise(0.07, 600 + Math.random() * 400, 0.06, 1.5);
+    },
+    bossDie() {
+      noise(0.9, 180, 0.45, 0.6, 'lowpass');
+      tone(220, 1.0, 'sawtooth', 0.2, -190);
+      [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.25, 'square', 0.1, 0, 0.35 + i * 0.09));
+    },
+    combo(level) {
+      const base = 392 * Math.pow(1.12, Math.min(level, 8));
+      [1, 1.25, 1.5, 2].forEach((m, i) => tone(base * m, 0.16, 'square', 0.11, 0, i * 0.06));
+      noise(0.3, 3000, 0.08, 1, 'highpass');
+    },
+    heartbeat() {
+      tone(70, 0.12, 'sine', 0.35, -20);
+      tone(62, 0.14, 'sine', 0.28, -20, 0.17);
     },
     boom() {
       if (limited('boom', 90)) return;
@@ -88,9 +109,12 @@ JJ.Audio = (() => {
       if (limited('zap', 80)) return;
       tone(900, 0.08, 'sawtooth', 0.06, -600);
     },
-    gem() {
-      if (limited('gem', 40)) return;
-      tone(880 + Math.random() * 200, 0.06, 'sine', 0.08);
+    gem(chain = 0) {
+      if (limited('gem', 35)) return;
+      // Pitch climbs while gems are collected in quick succession.
+      const f = 660 * Math.pow(1.059, Math.min(chain, 24));
+      tone(f, 0.07, 'sine', 0.08);
+      tone(f * 2, 0.05, 'sine', 0.03, 0, 0.02);
     },
     coin() {
       if (limited('coin', 60)) return;
@@ -102,7 +126,9 @@ JJ.Audio = (() => {
       tone(140, 0.2, 'sawtooth', 0.2, -90);
     },
     levelup() {
-      [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.15, 'square', 0.12, 0, i * 0.07));
+      noise(0.5, 1200, 0.18, 0.8, 'bandpass');
+      [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.18, 'square', 0.12, 0, i * 0.06));
+      tone(1568, 0.4, 'triangle', 0.08, 0, 0.32);
     },
     legendary() {
       [392, 523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.25, 'triangle', 0.15, 0, i * 0.08));

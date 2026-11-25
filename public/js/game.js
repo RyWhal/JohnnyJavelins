@@ -72,6 +72,27 @@ JJ.Game = class Game {
     this.bossDpsEMA = 0;
     this.lastBossDps = 0;
     this.decals = [];
+    // Juice state
+    this.realT = 0;
+    this.hitstop = 0;
+    this.slowmo = 0;
+    this.flashT = 0;
+    this.flashColor = '#ffffff';
+    this.punch = 0;
+    this.kick = { x: 0, y: 0 };
+    this.combo = 0;
+    this.comboT = 0;
+    this.bestCombo = 0;
+    this.nextMilestone = 0;
+    this.milestonesPaid = new Set();
+    this.callout = null;
+    this.bossIntro = null;
+    this.corpses = [];
+    this.stuck = [];
+    this.gemChain = 0;
+    this.gemChainT = 0;
+    this.heartbeatT = 0;
+    this.levelFlashAt = -10;
     this.biome = 'meadow';
     this.biomeTimer = 0;
   }
@@ -139,6 +160,28 @@ JJ.Game = class Game {
   // ------------------------------------------------------------------ loop
   update(dt) {
     if (this.state !== 'playing') return;
+    // Juice timers tick in real time, even through hit-stop and slow-mo.
+    this.realT += dt;
+    this.flashT = Math.max(0, this.flashT - dt);
+    this.punch = Math.max(0, this.punch - dt * 0.6);
+    const kd = Math.exp(-dt * 12);
+    this.kick.x *= kd;
+    this.kick.y *= kd;
+    if (this.hitstop > 0) {
+      this.hitstop -= dt;
+      return;
+    }
+    if (this.slowmo > 0) {
+      this.slowmo -= dt;
+      dt *= 0.3;
+    }
+    this.comboT -= dt;
+    if (this.comboT <= 0 && this.combo) {
+      this.combo = 0;
+      this.nextMilestone = 0;
+    }
+    this.gemChainT -= dt;
+    if (this.gemChainT <= 0) this.gemChain = 0;
     this.t += dt;
     const p = this.player;
     const s = this.stats;
@@ -157,6 +200,7 @@ JJ.Game = class Game {
       dc.t += dt;
       if (dc.t > dc.life) dc.dead = true;
     }
+    this.updateJuice(dt);
 
     // Spatial index of monsters for this frame
     this.grid.clear();
@@ -182,6 +226,8 @@ JJ.Game = class Game {
     JJ.compact(this.strikes);
     JJ.compact(this.vortexes);
     JJ.compact(this.decals);
+    JJ.compact(this.corpses);
+    JJ.compact(this.stuck);
     this.bosses = this.bosses.filter((b) => !b.dead);
 
     if (p.hp < s.maxHp) p.hp = Math.min(s.maxHp, p.hp + s.regen * dt);
@@ -356,9 +402,15 @@ JJ.Game = class Game {
       const a = Math.random() * JJ.TAU;
       const b = this.spawnEnemy(ev.enemy, p.x + Math.cos(a) * this.viewW * 0.6, p.y + Math.sin(a) * this.viewH * 0.6);
       const major = JJ.ENEMIES[ev.enemy].boss === 'major';
-      this.ui.toast(`${JJ.ENEMIES[ev.enemy].name} approaches!`, 4, ev.enemy);
+      const nm = JJ.ENEMIES[ev.enemy].name;
+      const [title, ...rest] = nm.split(/,| the /);
+      this.bossIntro = {
+        name: title.trim(), sub: rest.length ? (nm.includes(',') ? rest.join(',').trim() : 'the ' + rest.join(' the ').trim()) : '',
+        tag: major ? 'BOSS' : 'MINI-BOSS', sprite: ev.enemy, start: this.realT, major,
+      };
       JJ.Audio.sfx.boss();
       this.shake = major ? 12 : 6;
+      this.punch = major ? 0.08 : 0.04;
       return b;
     }
   }
@@ -478,6 +530,14 @@ JJ.Game = class Game {
     }
     p.throwAnim = 0.15;
     p.face = aim;
+    this.kick.x -= Math.cos(aim) * 2.5;
+    this.kick.y -= Math.sin(aim) * 2.5;
+    if (this.particles.length < 700) {
+      for (let i = 0; i < 3; i++) {
+        const a = aim + JJ.rand(-0.5, 0.5), v = JJ.rand(40, 90);
+        this.particles.push({ x: p.x + Math.cos(aim) * 14, y: p.y - 4 + Math.sin(aim) * 14, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: 0.25, color: 'rgba(255,255,255,0.7)', size: 3 });
+      }
+    }
     JJ.Audio.sfx.throw();
   }
 
@@ -546,6 +606,7 @@ JJ.Game = class Game {
             j.pierce = Infinity;
             j.dmg *= 1 + 0.3 * (s.boomerang - 1);
           } else {
+            this.stickJavelin(j, j.x, j.y);
             j.dead = true;
             continue;
           }
@@ -576,7 +637,9 @@ JJ.Game = class Game {
     const kb = e.boss ? 0 : (j.mega ? 400 : 110) / Math.max(1, e.r / 12);
     this.damageEnemy(e, dmg, crit, Math.cos(j.ang) * kb, Math.sin(j.ang) * kb);
     this.applyStatus(e, j.dmg);
-    JJ.Audio.sfx.hit();
+    if (crit || this.particles.length < 350) this.sparks(e.x - Math.cos(j.ang) * e.r * 0.6, e.y - Math.sin(j.ang) * e.r * 0.6, j.ang + Math.PI, crit ? 5 : 3, crit ? '#ffe36a' : '#fff4d8');
+    if (crit) JJ.Audio.sfx.crit();
+    else JJ.Audio.sfx.hit();
 
     if (s.explode) this.explode(e.x, e.y, s.explode * Math.sqrt(j.size), dmg * s.explodeDmg);
     if (s.chain && Math.random() < s.chainChance) this.chainLightning(e, s.chain, dmg * s.chainDmg);
@@ -615,8 +678,18 @@ JJ.Game = class Game {
           return;
         }
       }
+      // Spent javelins thunk into the ground beside their last victim.
+      if (j.depth === 0 && Math.random() < 0.6) this.stickJavelin(j, e.x + JJ.rand(-6, 6), e.y + e.r * 0.4);
       j.dead = true;
     }
+  }
+
+  stickJavelin(j, x, y) {
+    if (j.mega || j.returning) return;
+    // Fewer stuck javelins when the screen is already full of flying ones.
+    const cap = this.projectiles.length > 800 ? 40 : this.projectiles.length > 300 ? 80 : 140;
+    while (this.stuck.length > cap) this.stuck.shift();
+    this.stuck.push({ x, y, ang: j.ang + JJ.rand(-0.25, 0.25), size: j.size, t: 0, life: JJ.rand(1.8, 2.6) });
   }
 
   applyStatus(e, baseDmg) {
@@ -642,14 +715,19 @@ JJ.Game = class Game {
     if (e.boss) this.bossDmgAcc += Math.min(dmg, e.hp);
     e.hp -= dmg;
     e.flash = 0.07;
+    e.hitT = 0.14;
     if (kx || ky) {
       e.kx += kx;
       e.ky += ky;
+      const l = Math.hypot(kx, ky);
+      e.hdx = kx / l;
+      e.hdy = ky / l;
     }
     if (JJ.Save.data.settings.damageNumbers && this.texts.length < 140) {
       this.texts.push({
-        x: e.x + JJ.rand(-8, 8), y: e.y - e.r, vy: -60, t: 0, life: crit ? 0.8 : 0.55,
-        text: JJ.formatNum(dmg), color: color || (crit ? '#ffdd33' : '#ffffff'), big: crit,
+        x: e.x + JJ.rand(-8, 8), y: e.y - e.r, vx: JJ.rand(-45, 45), vy: crit ? -200 : -150, g: 460,
+        t: 0, life: crit ? 0.85 : 0.6,
+        text: JJ.formatNum(dmg) + (crit ? '!' : ''), color: color || (crit ? '#ffdd33' : '#ffffff'), big: crit,
       });
     }
     if (e.hp <= 0) this.killEnemy(e);
@@ -672,8 +750,93 @@ JJ.Game = class Game {
     if (s.singularity && this.vortexes.length < 8) {
       this.vortexes.push({ x, y, r: r * 1.9, t: 0, life: 1.5, dps: dmg * 1.2 });
     }
-    this.shake = Math.max(this.shake, 2.5);
+    this.shake = Math.max(this.shake, Math.min(8, 2 + r / 25));
+    if (this.decals.length < 150 && Math.random() < 0.5) this.decals.push({ x, y, color: 'rgba(30,18,10,', blobs: [[0, 0, r * 0.3], [r * 0.12, r * 0.08, r * 0.18]], t: 0, life: 2.5, scorch: true });
+    this.sparks(x, y, null, 6, '#ffb347', 260);
     JJ.Audio.sfx.boom();
+  }
+
+  // Short streaky sparks (dir = null for all directions).
+  sparks(x, y, dir, n, color, speed = 220) {
+    for (let i = 0; i < n && this.particles.length < 760; i++) {
+      const a = dir === null || dir === undefined ? Math.random() * JJ.TAU : dir + JJ.rand(-0.7, 0.7);
+      const v = JJ.rand(0.5, 1) * speed;
+      this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: JJ.rand(0.12, 0.28), color, size: JJ.rand(1.5, 2.5), spark: true });
+    }
+  }
+
+  flash(color, strength = 1) {
+    this.flashColor = color;
+    this.flashT = Math.max(this.flashT, 0.25 * strength);
+  }
+
+  updateJuice(dt) {
+    for (const c of this.corpses) {
+      c.t += dt;
+      if (c.t >= c.life) { c.dead = true; continue; }
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
+      c.vy += 900 * dt * c.grav;
+      c.rot += c.vr * dt;
+    }
+    for (const st of this.stuck) {
+      st.t += dt;
+      if (st.t >= st.life) st.dead = true;
+    }
+    // Heartbeat when Johnny is in trouble.
+    const p = this.player;
+    if (p.hp < this.stats.maxHp * 0.3 && p.hp > 0) {
+      this.heartbeatT -= dt;
+      if (this.heartbeatT <= 0) {
+        this.heartbeatT = 0.55 + (p.hp / this.stats.maxHp) * 1.5;
+        JJ.Audio.sfx.heartbeat();
+      }
+    }
+  }
+
+  // Ring of force on level-up: shoves the horde back and gives a breather.
+  levelBlast() {
+    const p = this.player;
+    const R = 300;
+    this.grid.each(p.x, p.y, R, (e) => {
+      if (e.dead || e.boss) return;
+      const dx = e.x - p.x, dy = e.y - p.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > R) return;
+      const f = 900 * (1 - d / R) + 150;
+      e.kx += (dx / d) * f;
+      e.ky += (dy / d) * f;
+      e.hitT = 0.14;
+    });
+    this.effects.push({ type: 'ring', x: p.x, y: p.y, r: R, t: 0, life: 0.45, color: '#ffe680' });
+    this.effects.push({ type: 'ring', x: p.x, y: p.y, r: R * 0.6, t: 0, life: 0.35, color: '#ffffff' });
+    this.burst(p.x, p.y, '#ffd34d', 40, 380);
+    for (const b of this.shots) if (JJ.dist2(b.x, b.y, p.x, p.y) < R * R) b.dead = true;
+    this.flash('#fff2b0', 0.6);
+    this.punch = 0.06;
+    this.levelFlashAt = this.realT;
+  }
+
+  addCombo() {
+    this.combo++;
+    this.comboT = 1.8;
+    if (this.combo > this.bestCombo) this.bestCombo = this.combo;
+    const M = JJ.COMBO_MILESTONES;
+    if (this.nextMilestone < M.length && this.combo >= M[this.nextMilestone][0]) {
+      const [n, text] = M[this.nextMilestone++];
+      // Each milestone pays out once per run; repeats are just for glory.
+      this.milestonesPaid = this.milestonesPaid || new Set();
+      let sub = `${n} kill combo`;
+      if (!this.milestonesPaid.has(n)) {
+        this.milestonesPaid.add(n);
+        const bonus = Math.round((n / 5) * this.stats.goldMult);
+        this.gold += bonus;
+        sub += `  +${bonus} gold`;
+      }
+      this.callout = { text, sub, start: this.realT };
+      this.flash('#ffd34d', 0.5);
+      JJ.Audio.sfx.combo(this.nextMilestone);
+    }
   }
 
   chainLightning(from, n, dmg) {
@@ -788,6 +951,7 @@ JJ.Game = class Game {
     for (const e of this.enemies) {
       if (e.dead) continue;
       e.flash -= dt;
+      if (e.hitT > 0) e.hitT -= dt;
       e.orbitCD -= dt;
       if (e.slowT > 0) e.slowT -= dt;
       if (e.burnT > 0) {
@@ -1037,6 +1201,8 @@ JJ.Game = class Game {
   killEnemy(e) {
     e.dead = true;
     this.kills++;
+    this.addCombo();
+    this.flingCorpse(e);
     const s = this.stats;
     const coinVal = 1 + Math.floor(this.t / 180);
 
@@ -1044,7 +1210,13 @@ JJ.Game = class Game {
       const major = e.boss === 'major';
       const def = JJ.ENEMIES[e.type];
       this.bossKills++;
-      this.shake = major ? 15 : 8;
+      this.shake = major ? 20 : 12;
+      this.hitstop = major ? 0.16 : 0.1;
+      this.slowmo = major ? 1.6 : 0.9;
+      this.punch = major ? 0.14 : 0.09;
+      this.flash('#ffffff', major ? 1.4 : 0.9);
+      this.effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r * 6, t: 0, life: 0.6, color: '#fff2b0' });
+      JJ.Audio.sfx.bossDie();
       for (let i = 0; i < (major ? 20 : 8); i++) this.dropPickup('coin', e.x + JJ.rand(-60, 60), e.y + JJ.rand(-60, 60), coinVal);
       this.dropPickup('gem', e.x, e.y, e.xp);
       this.dropPickup('chest', e.x, e.y, major ? 3 : 1);
@@ -1070,6 +1242,9 @@ JJ.Game = class Game {
       else if (r < 0.0055) this.dropPickup('magnet', e.x, e.y, 1);
       else if (r < 0.0072) this.dropPickup('frenzy', e.x, e.y, 1);
       if (e.elite) {
+        this.hitstop = Math.max(this.hitstop, 0.06);
+        this.shake = Math.max(this.shake, 7);
+        this.effects.push({ type: 'ring', x: e.x, y: e.y, r: e.r * 4, t: 0, life: 0.4, color: '#ffd34d' });
         this.dropPickup('chest', e.x, e.y, Math.random() < 0.15 ? 3 : 1);
         for (let i = 0; i < 6; i++) this.dropPickup('coin', e.x + JJ.rand(-30, 30), e.y + JJ.rand(-30, 30), coinVal);
       }
@@ -1096,6 +1271,21 @@ JJ.Game = class Game {
       if (this.effects.length < 220) this.effects.push({ type: 'ring', x: e.x, y: e.y, r: 80, t: 0, life: 0.25, color: '#ff8833' });
     }
     JJ.Audio.sfx.kill();
+  }
+
+  // The body tumbles away from the killing blow, spinning and fading.
+  flingCorpse(e) {
+    if (this.corpses.length > 90) return;
+    const dx = e.hdx !== undefined ? e.hdx : (e.x - this.player.x) / (Math.hypot(e.x - this.player.x, e.y - this.player.y) || 1);
+    const dy = e.hdy !== undefined ? e.hdy : (e.y - this.player.y) / (Math.hypot(e.x - this.player.x, e.y - this.player.y) || 1);
+    const big = !!e.boss;
+    const sp = big ? 120 : JJ.rand(180, 300);
+    this.corpses.push({
+      type: e.type, draw: e.draw, r: e.r, boss: e.boss, color: e.color,
+      x: e.x, y: e.y, vx: dx * sp, vy: dy * sp - (big ? 60 : 160), grav: big ? 0.15 : 1,
+      rot: 0, vr: (dx >= 0 ? 1 : -1) * JJ.rand(8, 14) * (big ? 0.3 : 1), flip: dx < 0,
+      t: 0, life: big ? 1.4 : 0.42,
+    });
   }
 
   // Remains left on the ground; they fade out over time.
@@ -1140,16 +1330,41 @@ JJ.Game = class Game {
       }
       this.gemCount++;
     }
-    this.pickups.push({ type, x, y, value, attract: false, spd: 0, t: Math.random() * 10, age: 0 });
+    // Loot pops out of the body in a little arc and bounces.
+    const big = type === 'chest' || type === 'heart';
+    const a = Math.random() * JJ.TAU;
+    const v = type === 'gem' ? JJ.rand(20, 70) : JJ.rand(50, 130);
+    this.pickups.push({
+      type, x, y, value, attract: false, spd: 0, t: Math.random() * 10, age: 0,
+      vx: Math.cos(a) * v, vy: Math.sin(a) * v, z: 0.1, vz: big ? 300 : type === 'gem' ? JJ.rand(110, 170) : JJ.rand(180, 260),
+    });
   }
 
   updatePickups(dt) {
     const p = this.player, s = this.stats;
     const range2 = s.pickup * s.pickup;
     const far2 = (this.viewW * 0.9) ** 2;
+    const drag = Math.exp(-dt * 2);
     for (const k of this.pickups) {
       k.t += dt;
       k.age += dt;
+      if (k.z > 0) {
+        k.vz -= 900 * dt;
+        k.z += k.vz * dt;
+        k.x += k.vx * dt;
+        k.y += k.vy * dt;
+        k.vx *= drag;
+        k.vy *= drag;
+        if (k.z <= 0) {
+          if (k.vz < -110) {
+            k.z = 0.1;
+            k.vz = -k.vz * 0.38;
+          } else {
+            k.z = 0;
+          }
+        }
+        if (k.age < 0.3) continue;
+      }
       const dx = p.x - k.x, dy = p.y - k.y;
       const d2 = dx * dx + dy * dy;
       if (!k.attract) {
@@ -1175,10 +1390,14 @@ JJ.Game = class Game {
       case 'gem':
         this.gemCount--;
         this.gainXp(k.value * s.xpMult);
-        JJ.Audio.sfx.gem();
+        this.gemChain++;
+        this.gemChainT = 0.4;
+        JJ.Audio.sfx.gem(this.gemChain);
+        if (this.particles.length < 700) this.sparks(k.x, k.y, null, 2, k.value >= 10 ? '#ff7a9a' : '#9fd8ff', 90);
         break;
       case 'coin':
         this.gold += k.value * s.goldMult;
+        this.sparks(k.x, k.y, null, 3, '#ffd34d', 110);
         JJ.Audio.sfx.coin();
         break;
       case 'heart':
@@ -1204,18 +1423,21 @@ JJ.Game = class Game {
   heal(n) {
     const p = this.player;
     p.hp = Math.min(this.stats.maxHp, p.hp + n);
-    this.texts.push({ x: p.x, y: p.y - 24, vy: -50, t: 0, life: 0.8, text: `+${Math.round(n)}`, color: '#5f5', big: true });
+    this.texts.push({ x: p.x, y: p.y - 24, vx: 0, vy: -110, g: 200, t: 0, life: 0.9, text: `+${Math.round(n)}`, color: '#5f5', big: true });
   }
 
   gainXp(v) {
     const p = this.player;
+    let leveled = false;
     p.xp += v;
     while (p.xp >= p.xpNext) {
       p.xp -= p.xpNext;
       p.level++;
       p.xpNext = this.xpFor(p.level);
       this.pendingLevels++;
+      leveled = true;
     }
+    if (leveled) this.levelBlast();
   }
 
   hurtPlayer(dmg) {
@@ -1225,8 +1447,10 @@ JJ.Game = class Game {
     p.hp -= dmg;
     p.inv = 0.45;
     this.hurtFlash = 0.25;
+    this.hitstop = Math.max(this.hitstop, 0.05);
+    this.shake = Math.max(this.shake, 6 + Math.min(10, dmg / 4));
     JJ.Audio.sfx.hurt();
-    this.texts.push({ x: p.x, y: p.y - 20, vy: -50, t: 0, life: 0.6, text: `-${Math.round(dmg)}`, color: '#ff4444', big: true });
+    this.texts.push({ x: p.x, y: p.y - 20, vx: 0, vy: -120, g: 300, t: 0, life: 0.7, text: `-${Math.round(dmg)}`, color: '#ff4444', big: true });
     if (p.hp <= 0) {
       if (this.revive) {
         this.revive = false;
@@ -1273,7 +1497,9 @@ JJ.Game = class Game {
     }
     for (const tx of this.texts) {
       tx.t += dt;
+      tx.x += (tx.vx || 0) * dt;
       tx.y += tx.vy * dt;
+      tx.vy += (tx.g || 0) * dt;
       if (tx.t >= tx.life) tx.dead = true;
     }
   }
@@ -1402,10 +1628,15 @@ JJ.Game = class Game {
     else JJ.Audio.sfx.gameover();
     this.ui.showGameOver({
       won, time: this.t, level: this.player.level, kills: this.kills, javelins: this.javelins,
-      gold: runGold, bonus, total, newBest, legendaries: this.legendaries.slice(), bosses: this.bossKills,
+      gold: runGold, bonus, total, newBest, legendaries: this.legendaries.slice(), bosses: this.bossKills, bestCombo: this.bestCombo,
     });
   }
 };
+
+JJ.COMBO_MILESTONES = [
+  [25, 'KILLING SPREE'], [50, 'RAMPAGE!'], [100, 'UNSTOPPABLE!'], [200, 'GODLIKE!'],
+  [400, 'JAVELINPOCALYPSE!'], [800, 'ONE WITH THE SPEAR'], [1600, 'BEYOND JOHNNY'],
+];
 
 JJ.FALLBACK_GOLD = { id: '_gold', name: 'Pouch of Gold', kind: 'johnny', max: 99, desc: () => 'Gain <b>25</b> gold.' };
 JJ.FALLBACK_HEAL = { id: '_heal', name: 'Roast Chicken', kind: 'johnny', max: 99, desc: () => 'Heal <b>50</b> HP.' };

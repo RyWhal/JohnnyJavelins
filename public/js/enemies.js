@@ -651,6 +651,8 @@ JJ.drawEnemy = (ctx, e, time, px, py) => {
   }
   if (e.lungeT > 0) sy *= 0.82;
   if (e.windupT > 0) { sx *= 1.08; sy *= 0.9; }
+  // Squash on impact, springing back.
+  if (e.hitT > 0) { const k = e.hitT / 0.14; sx *= 1 + 0.28 * k; sy *= 1 - 0.22 * k; }
   // Sprites face right; flip toward travel (or toward Johnny when still).
   const dirX = Math.abs(e.vx || 0) > 3 ? e.vx : px - e.x;
   const flip = dirX < 0;

@@ -427,6 +427,8 @@ JJ.UI = class UI {
     this.choices = choices;
     const cards = this.$('cards');
     cards.innerHTML = choices.map((u, i) => this.cardHtml(u, i)).join('');
+    // Deal the cards in one after another.
+    cards.querySelectorAll('.card').forEach((c, i) => (c.style.animationDelay = `${0.12 + i * 0.09}s`));
     cards.querySelectorAll('.card').forEach((c) =>
       c.addEventListener('click', () => this.pick(parseInt(c.dataset.idx, 10))),
     );
@@ -517,13 +519,40 @@ JJ.UI = class UI {
       <div>Level reached</div><div>${r.level}</div>
       <div>Monsters skewered</div><div>${JJ.formatNum(r.kills)}</div>
       <div>Javelins thrown</div><div>${JJ.formatNum(r.javelins)}</div>
+      <div>Best combo</div><div>x${r.bestCombo || 0}</div>
       ${legends ? `<div>Legendaries</div><div>${legends}</div>` : ''}
       <div>Gold collected</div><div>${JJ.icon('coin', 16, 'inl')} ${r.gold}</div>
       <div>Survival bonus</div><div>${JJ.icon('coin', 16, 'inl')} ${r.bonus}</div>
-      <div class="total">Total banked</div><div class="total">${JJ.icon('coin', 16, 'inl')} ${r.total}</div>
+      <div class="total">Total banked</div><div class="total" id="go-total-cell">${JJ.icon('coin', 16, 'inl')} <span id="go-total">0</span></div>
       ${r.newBest ? '<div class="new-best" style="grid-column:1/-1">New best survival time!</div>' : ''}`;
     this.submitRun(r);
-    setTimeout(() => this.show('gameover'), r.won ? 200 : 900);
+    setTimeout(() => {
+      this.show('gameover');
+      this.countUp(this.$('go-total'), r.total, 1.1);
+    }, r.won ? 200 : 900);
+  }
+
+  // Count a number up with a coin tick, for a satisfying payout.
+  countUp(el, target, secs) {
+    const cell = this.$('go-total-cell');
+    cell.classList.add('counting');
+    const start = performance.now();
+    let lastTick = 0;
+    const step = (now) => {
+      const k = Math.min(1, (now - start) / (secs * 1000));
+      const v = Math.round(target * (1 - Math.pow(1 - k, 3)));
+      el.textContent = v;
+      if (now - lastTick > 70 && k < 1) {
+        lastTick = now;
+        JJ.Audio.sfx.coin();
+      }
+      if (k < 1) requestAnimationFrame(step);
+      else {
+        cell.classList.remove('counting');
+        this.retrigger(el, 'bump');
+      }
+    };
+    requestAnimationFrame(step);
   }
 
   toast(msg, dur = 2.2, icon) {
@@ -548,17 +577,42 @@ JJ.UI = class UI {
     else this.$(id)[prop] = val;
   }
 
+  // Restart a CSS animation class on an element.
+  retrigger(el, cls) {
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
+  // Set a counter and bump it (throttled so it doesn't flicker).
+  bumpSet(id, val) {
+    if (this.hudCache[id + 'textContent'] === val) return;
+    this.set(id, val);
+    const now = performance.now();
+    this.bumpAt = this.bumpAt || {};
+    if (!this.bumpAt[id] || now - this.bumpAt[id] > 140) {
+      this.bumpAt[id] = now;
+      this.retrigger(this.$(id), 'bump');
+    }
+  }
+
   updateHUD() {
     const g = this.game;
     if (!g || !g.player || g.state === 'idle' || g.state === 'over') return;
     const p = g.player, s = g.stats;
     this.set('xpfill', `${Math.min(100, (p.xp / p.xpNext) * 100).toFixed(1)}%`, 'width');
     this.set('lvl', `LV ${p.level}`);
-    this.set('hpfill', `${JJ.clamp((p.hp / s.maxHp) * 100, 0, 100).toFixed(1)}%`, 'width');
+    const hpPct = `${JJ.clamp((p.hp / s.maxHp) * 100, 0, 100).toFixed(1)}%`;
+    this.set('hpfill', hpPct, 'width');
+    this.set('hptrail', hpPct, 'width');
     this.set('hptext', `${Math.ceil(Math.max(0, p.hp))} / ${Math.round(s.maxHp)}`);
     this.set('timer', JJ.formatTime(g.t));
-    this.set('kills', JJ.formatNum(g.kills));
-    this.set('gold', JJ.formatNum(g.gold));
+    this.bumpSet('kills', JJ.formatNum(g.kills));
+    this.bumpSet('gold', JJ.formatNum(g.gold));
+    if (g.levelFlashAt !== this.lastLevelFlash) {
+      this.lastLevelFlash = g.levelFlashAt;
+      if (g.levelFlashAt > 0) this.retrigger(this.$('xpbar'), 'flash');
+    }
 
     const buildKey = g.order.map((id) => id + g.levelOf(id)).join();
     if (buildKey !== this.lastBuildKey) {

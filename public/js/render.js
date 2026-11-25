@@ -29,8 +29,21 @@ JJ.Renderer = class Renderer {
     const live = game.player && game.state !== 'idle';
     let cx, cy;
     if (live) {
-      cx = game.player.x;
-      cy = game.player.y;
+      // Smooth follow with a little look-ahead in the direction of travel.
+      const p = game.player;
+      const mv = p.moving ? 70 : 0;
+      const tx = p.x + Math.cos(p.face) * mv * (p.moving ? 1 : 0);
+      const ty = p.y + Math.sin(p.face) * mv * (p.moving ? 1 : 0);
+      if (this.camX === undefined || Math.hypot(this.camX - p.x, this.camY - p.y) > 900) {
+        this.camX = p.x;
+        this.camY = p.y;
+      }
+      const k = 1 - Math.exp(-dt * (p.moving ? 4 : 6));
+      this.camX += (tx - this.camX) * k;
+      this.camY += (ty - this.camY) * k;
+      const fx = JJ.Save.data.settings.shake ? 1 : 0;
+      cx = this.camX + game.kick.x * fx;
+      cy = this.camY + game.kick.y * fx;
     } else {
       this.menuCam.x += dt * 40;
       this.menuCam.y += dt * 15;
@@ -46,7 +59,8 @@ JJ.Renderer = class Renderer {
       sy = JJ.rand(-game.shake, game.shake);
     }
 
-    const z = this.zoom * this.dpr;
+    const punch = live && JJ.Save.data.settings.shake ? game.punch : 0;
+    const z = this.zoom * (1 + punch) * this.dpr;
     const ox = this.dpr * (this.w / 2 + sx) - cx * z;
     const oy = this.dpr * (this.h / 2 + sy) - cy * z;
     this.worldTransform = [z, 0, 0, z, ox, oy];
@@ -73,10 +87,12 @@ JJ.Renderer = class Renderer {
       return this.drawScreenFx(time);
     }
 
+    this.drawStuck();
     this.drawPickups(time);
     this.drawStrikeMarkers();
     this.drawVortexes(time);
     for (const e of game.enemies) if (!e.dead) JJ.drawEnemy(ctx, e, time, game.player.x, game.player.y);
+    this.drawCorpses();
     this.drawPlayer(time);
     this.drawOrbit();
     this.drawProjectiles();
@@ -145,7 +161,7 @@ JJ.Renderer = class Renderer {
     const g = this.game;
     if (!g.decals) return;
     for (const d of g.decals) {
-      const a = 0.45 * (1 - d.t / d.life);
+      const a = (d.scorch ? 0.3 : 0.45) * (1 - d.t / d.life);
       ctx.fillStyle = d.color + a.toFixed(3) + ')';
       for (const [bx, by, br] of d.blobs) {
         ctx.beginPath();
@@ -450,6 +466,35 @@ JJ.Renderer = class Renderer {
     JJ.drawJavelin(this.ctx, x, y, ang, size, tip, trail, mega, JJ.Save.data.johnny);
   }
 
+  // Spent javelins standing in the ground, fading out.
+  drawStuck() {
+    const { ctx } = this;
+    const tip = this.tipColor();
+    for (const st of this.game.stuck) {
+      const a = Math.min(1, (st.life - st.t) / 0.4);
+      ctx.globalAlpha = a;
+      // dirt kicked up where the tip went in
+      ctx.fillStyle = 'rgba(40,25,10,0.35)';
+      ctx.fillRect(st.x + Math.cos(st.ang) * 9 * st.size - 4, st.y + Math.sin(st.ang) * 9 * st.size - 2, 8, 4);
+      this.javelinShape(st.x, st.y, st.ang, st.size * 0.7, tip, false);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Killed monsters tumbling away from the blow.
+  drawCorpses() {
+    const { ctx } = this;
+    if (!JJ.Sprites.ready) return;
+    for (const c of this.game.corpses) {
+      const k = c.t / c.life;
+      const name = JJ.SPRITE_INDEX[c.type] ? c.type : c.draw || c.type;
+      const size = Math.min(112, c.r * (c.boss ? 2.9 : 3.3)) * (c.boss ? 1 + k * 0.4 : 1);
+      const o = { flip: c.flip, rot: c.rot, center: true, alpha: 1 - k * k };
+      JJ.Sprites.draw(ctx, name, c.x, c.y, size, o);
+      if (c.t < 0.07 || c.boss) JJ.Sprites.draw(ctx, name, c.x, c.y, size, { ...o, tint: 'white', alpha: c.boss ? 0.5 * (1 - k) : 0.9 });
+    }
+  }
+
   drawProjectiles() {
     const tip = this.tipColor();
     for (const j of this.game.projectiles) {
@@ -648,7 +693,8 @@ JJ.Renderer = class Renderer {
       ctx.arc(k.x, k.y, 26, 0, JJ.TAU);
       ctx.fill();
     }
-    JJ.Sprites.draw(ctx, name, k.x, k.y + (grounded ? size * 0.45 : bob - 2), size, { sx, center: !grounded });
+    const z = k.z || 0;
+    JJ.Sprites.draw(ctx, name, k.x, k.y - z + (grounded ? size * 0.45 : z > 0 ? -2 : bob - 2), size, { sx, center: !grounded });
     // occasional sparkle on gems
     if (k.type === 'gem' && Math.sin(k.t * 3 + k.x) > 0.97) {
       ctx.fillStyle = '#fff';
@@ -699,10 +745,32 @@ JJ.Renderer = class Renderer {
 
   drawParticles() {
     const { ctx } = this;
+    // Sparks are batched into one path per colour; they shrink as they age.
+    const sparkPaths = this.sparkPaths || (this.sparkPaths = new Map());
     for (const q of this.game.particles) {
+      if (q.spark) {
+        let path = sparkPaths.get(q.color);
+        if (!path) sparkPaths.set(q.color, (path = []));
+        path.push(q);
+        continue;
+      }
       ctx.globalAlpha = 1 - q.t / q.life;
       ctx.fillStyle = q.color;
       ctx.fillRect(q.x - q.size / 2, q.y - q.size / 2, q.size, q.size);
+    }
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2;
+    for (const [color, list] of sparkPaths) {
+      if (!list.length) continue;
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      for (const q of list) {
+        const k = 0.04 * (1 - q.t / q.life);
+        ctx.moveTo(q.x, q.y);
+        ctx.lineTo(q.x - q.vx * k, q.y - q.vy * k);
+      }
+      ctx.stroke();
+      list.length = 0;
     }
     ctx.globalAlpha = 1;
   }
@@ -711,16 +779,152 @@ JJ.Renderer = class Renderer {
     const { ctx } = this;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(20,10,4,0.9)';
     for (const t of this.game.texts) {
-      ctx.globalAlpha = 1 - (t.t / t.life) ** 2;
-      ctx.font = t.big ? 'bold 18px system-ui, sans-serif' : 'bold 13px system-ui, sans-serif';
+      ctx.globalAlpha = 1 - (t.t / t.life) ** 3;
+      // Numbers pop in big and settle.
+      const pop = t.t < 0.09 ? 1.7 - (t.t / 0.09) * 0.7 : 1;
+      const px = Math.round((t.big ? 20 : 14) * pop);
+      ctx.font = `700 ${px}px 'Pixelify Sans', system-ui, sans-serif`;
       ctx.strokeText(t.text, t.x, t.y);
       ctx.fillStyle = t.color;
       ctx.fillText(t.text, t.x, t.y);
     }
     ctx.globalAlpha = 1;
+  }
+
+  // Combo counter under the kill/gold counters, bumping on every kill.
+  drawCombo(time) {
+    const { ctx, game } = this;
+    const c = game.combo;
+    if (c !== this.lastCombo) {
+      if (c > (this.lastCombo || 0)) this.comboPop = 1;
+      this.lastCombo = c;
+    }
+    this.comboPop = Math.max(0, (this.comboPop || 0) - 0.08);
+    if (c < 5) return;
+    const fade = Math.min(1, game.comboT / 0.4);
+    const x = this.w - 16, y = this.w < 640 ? 170 : 148;
+    const heat = Math.min(1, c / 200);
+    ctx.save();
+    ctx.globalAlpha = fade;
+    ctx.translate(x, y);
+    ctx.scale(1 + this.comboPop * 0.35, 1 + this.comboPop * 0.35);
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.font = `700 ${Math.round(30 + heat * 14)}px 'Pixelify Sans', system-ui, sans-serif`;
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#1a0c04';
+    const col = `rgb(255,${Math.round(230 - heat * 150)},${Math.round(90 - heat * 70)})`;
+    ctx.strokeText(`x${c}`, 0, 0);
+    ctx.fillStyle = col;
+    ctx.fillText(`x${c}`, 0, 0);
+    ctx.font = `600 13px 'Pixelify Sans', system-ui, sans-serif`;
+    ctx.lineWidth = 4;
+    ctx.strokeText('COMBO', 0, 24);
+    ctx.fillStyle = '#f6ead2';
+    ctx.fillText('COMBO', 0, 24);
+    // timer sliver
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(-60, 34, 60, 4);
+    ctx.fillStyle = col;
+    ctx.fillRect(-60, 34, 60 * Math.min(1, game.comboT / 1.8), 4);
+    ctx.restore();
+  }
+
+  // Big announcement for combo milestones.
+  drawCallout() {
+    const { ctx, game } = this;
+    const c = game.callout;
+    if (!c) return;
+    const t = game.realT - c.start;
+    if (t > 1.8) { game.callout = null; return; }
+    // overshooting scale-in, then hold, then fade up
+    const s = t < 0.25 ? JJ.easeOutBack(t / 0.25) : 1;
+    const a = t > 1.4 ? 1 - (t - 1.4) / 0.4 : 1;
+    const y = this.h * 0.28 - (t > 1.4 ? (t - 1.4) * 60 : 0);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, a);
+    ctx.translate(this.w / 2, y);
+    ctx.rotate(-0.04);
+    ctx.scale(s, s);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    const size = Math.min(64, this.w / 11);
+    ctx.font = `700 ${size}px 'Pixelify Sans', system-ui, sans-serif`;
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#1a0c04';
+    ctx.strokeText(c.text, 0, 0);
+    const g = ctx.createLinearGradient(0, -size / 2, 0, size / 2);
+    g.addColorStop(0, '#fff3b0');
+    g.addColorStop(0.5, '#ffd34d');
+    g.addColorStop(1, '#ff8a2a');
+    ctx.fillStyle = g;
+    ctx.fillText(c.text, 0, 0);
+    ctx.font = `600 18px 'Pixelify Sans', system-ui, sans-serif`;
+    ctx.lineWidth = 5;
+    ctx.strokeText(c.sub, 0, size * 0.75);
+    ctx.fillStyle = '#f6ead2';
+    ctx.fillText(c.sub, 0, size * 0.75);
+    ctx.restore();
+  }
+
+  // Letterboxed title card when a boss arrives.
+  drawBossIntro() {
+    const { ctx, game } = this;
+    const b = game.bossIntro;
+    if (!b) return;
+    const t = game.realT - b.start;
+    const D = 2.8;
+    if (t > D) { game.bossIntro = null; return; }
+    const w = this.w, h = this.h;
+    const inK = Math.min(1, t / 0.35), outK = t > D - 0.4 ? (t - (D - 0.4)) / 0.4 : 0;
+    const bars = h * 0.1 * JJ.easeOutCubic(inK) * (1 - outK);
+    ctx.fillStyle = '#050302';
+    ctx.fillRect(0, 0, w, bars);
+    ctx.fillRect(0, h - bars, w, bars);
+    // title slides in from the left, out to the right
+    const slide = (1 - JJ.easeOutCubic(Math.min(1, t / 0.45))) * -w * 0.6 + outK * w * 0.6;
+    const cy = h * 0.72;
+    ctx.save();
+    ctx.globalAlpha = 1 - outK;
+    ctx.translate(w / 2 + slide, cy);
+    // dark band behind the text
+    const bandW = Math.min(w * 0.9, 760);
+    const bg = ctx.createLinearGradient(-bandW / 2, 0, bandW / 2, 0);
+    bg.addColorStop(0, 'rgba(10,4,2,0)');
+    bg.addColorStop(0.2, 'rgba(10,4,2,0.75)');
+    bg.addColorStop(0.8, 'rgba(10,4,2,0.75)');
+    bg.addColorStop(1, 'rgba(10,4,2,0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(-bandW / 2, -56, bandW, 112);
+    ctx.fillStyle = b.major ? '#ff3b2a' : '#ffb02e';
+    ctx.fillRect(-bandW * 0.35, -56, bandW * 0.7, 3);
+    ctx.fillRect(-bandW * 0.35, 53, bandW * 0.7, 3);
+    if (JJ.Sprites.ready) JJ.Sprites.draw(ctx, b.sprite, -bandW * 0.34, 0, 88, { center: true });
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.font = `700 16px 'Pixelify Sans', system-ui, sans-serif`;
+    ctx.fillStyle = b.major ? '#ff5a4a' : '#ffb02e';
+    ctx.fillText(`— ${b.tag} —`, 20, -34);
+    const nameSize = Math.min(46, w / 16);
+    ctx.font = `700 ${nameSize}px 'Pixelify Sans', system-ui, sans-serif`;
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = '#1a0c04';
+    ctx.strokeText(b.name.toUpperCase(), 20, 2);
+    ctx.fillStyle = '#fff3d6';
+    ctx.fillText(b.name.toUpperCase(), 20, 2);
+    if (b.sub) {
+      ctx.font = `italic 600 17px 'Pixelify Sans', system-ui, sans-serif`;
+      ctx.fillStyle = '#d1b98f';
+      ctx.fillText(b.sub, 20, 36);
+    }
+    ctx.restore();
   }
 
   // Screen-space overlays
@@ -742,6 +946,26 @@ JJ.Renderer = class Renderer {
       ctx.fillStyle = `rgba(255,0,0,${game.hurtFlash * 0.6})`;
       ctx.fillRect(0, 0, w, h);
     }
+    const fxOn = JJ.Save.data.settings.shake;
+    if (fxOn && game.flashT > 0) {
+      ctx.globalAlpha = Math.min(0.55, game.flashT * 1.8);
+      ctx.fillStyle = game.flashColor;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalAlpha = 1;
+    }
+    // Low health: a pulsing red heartbeat vignette.
+    const hpK = game.player.hp / game.stats.maxHp;
+    if (hpK < 0.3 && game.player.hp > 0) {
+      const beat = Math.pow(Math.max(0, Math.sin(time * (5 + (0.3 - hpK) * 12))), 6);
+      const g2 = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
+      g2.addColorStop(0, 'rgba(160,0,0,0)');
+      g2.addColorStop(1, `rgba(160,0,0,${0.25 + 0.3 * beat})`);
+      ctx.fillStyle = g2;
+      ctx.fillRect(0, 0, w, h);
+    }
+    this.drawCombo(time);
+    this.drawCallout();
+    this.drawBossIntro();
     if (game.frenzyT > 0) {
       ctx.strokeStyle = `rgba(255,120,30,${0.35 + 0.15 * Math.sin(time * 12)})`;
       ctx.lineWidth = 14;

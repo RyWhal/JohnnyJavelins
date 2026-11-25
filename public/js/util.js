@@ -14,6 +14,11 @@ JJ.dist2 = (ax, ay, bx, by) => {
   const dx = ax - bx, dy = ay - by;
   return dx * dx + dy * dy;
 };
+JJ.easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+JJ.easeOutBack = (t) => {
+  const c1 = 1.9, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+};
 JJ.angleDiff = (a, b) => {
   let d = (b - a) % JJ.TAU;
   if (d > Math.PI) d -= JJ.TAU;
