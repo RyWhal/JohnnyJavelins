@@ -15,40 +15,40 @@ JJ.BIOMES = {
     dust: 'rgba(120,95,60,0.5)',
     name: 'Greenhollow Meadow', dark: 0, tint: null, ambient: 'leaves', favored: {},
     ground: ['#2f5a2a', '#3a6b30', '#467c37', '#548b40', '#63994a'],
-    density: 0.12,
-    props: { m_grass1: 5, m_grass2: 3, m_grass3: 3, m_daisy1: 2, m_daisy2: 2, m_clover1: 2, m_clover2: 2, m_rock1: 1, m_rock2: 1, m_pebble: 2, m_toad: 0.6 },
+    density: 0.08,
+    props: { m_grass1: 5, m_grass2: 3, m_grass3: 3, m_clover1: 2, m_clover2: 1, m_rock1: 1, m_rock2: 1, m_pebble: 1 },
   },
   forest: {
     dust: 'rgba(70,55,35,0.5)',
     name: 'The Darkwood', dark: 0.32, tint: 'rgba(20,40,30,0.12)', ambient: 'fireflies', canopy: true,
     favored: { wolf: 2.5, goblin: 2, troll: 1.5 },
     ground: ['#1c3019', '#233a1f', '#2b4524', '#33502a', '#3d5c30'],
-    density: 0.16,
-    props: { f_fern1: 3, f_fern2: 3, f_moss1: 2, f_moss2: 2, f_mush1: 2, f_mush2: 1.5, f_lant1: 0.8, f_lant2: 0.8, f_stump1: 1, f_stump2: 1, f_log1: 0.8, f_log2: 0.8 },
+    density: 0.1,
+    props: { f_fern1: 3, f_fern2: 3, f_moss1: 2, f_moss2: 2, f_mush1: 0.6, f_stump1: 1, f_stump2: 1, f_log1: 0.8, f_log2: 0.8 },
   },
   desert: {
     dust: 'rgba(225,195,140,0.65)',
     name: 'Sunscorch Dunes', dark: -0.1, tint: 'rgba(255,170,60,0.07)', ambient: 'dust',
     favored: { skeleton: 2, archer: 2.5, mage: 1.2 },
     ground: ['#b8904f', '#c69e5c', '#d2ab68', '#ddb978', '#e7c88c'],
-    density: 0.07,
-    props: { d_cact1: 1.5, d_cact2: 1.5, d_sag1: 1.5, d_sag2: 1.5, d_bone1: 1, d_bone2: 1, d_dino: 0.6, d_rock: 1, d_peb: 1.5, d_bush: 1.5 },
+    density: 0.05,
+    props: { d_cact1: 1.5, d_cact2: 1.5, d_sag1: 1.5, d_sag2: 1.5, d_bone1: 0.4, d_bone2: 0.4, d_dino: 0.3, d_rock: 1, d_bush: 1.5 },
   },
   tundra: {
     dust: 'rgba(255,255,255,0.8)',
     name: 'The Frostlands', dark: 0, tint: 'rgba(120,170,255,0.08)', ambient: 'snow',
     favored: { wolf: 3, wraith: 1.5, troll: 1.5 },
     ground: ['#b9c9d6', '#c9d7e2', '#d8e3ec', '#e5eef4', '#f2f7fa'],
-    density: 0.09,
-    props: { t_snow1: 2, t_snow2: 2, t_fmush1: 1, t_fmush2: 1, t_cry1: 1, t_cry2: 1, t_rock1: 1.5, t_rock2: 1.5, t_log: 0.8, t_grass: 2 },
+    density: 0.06,
+    props: { t_snow1: 2, t_snow2: 2, t_rock1: 1.5, t_rock2: 1.5, t_log: 0.8, t_grass: 2 },
   },
   swamp: {
     dust: 'rgba(60,70,45,0.55)',
     name: 'Murkmire Bog', dark: 0.22, tint: 'rgba(60,90,40,0.12)', ambient: 'mist',
     favored: { slime: 3, mage: 2, bat: 1.5 },
     ground: ['#2c3424', '#343e2a', '#3d4830', '#465236', '#505d3c'],
-    density: 0.12,
-    props: { s_reed1: 3, s_reed2: 3, s_moss: 2, s_bush: 1.5, s_mush: 1 },
+    density: 0.08,
+    props: { s_reed1: 3, s_reed2: 3, s_moss: 2, s_bush: 1.5 },
     waterProps: { s_lily1: 2, s_lily2: 2 },
   },
   graveyard: {
@@ -56,16 +56,16 @@ JJ.BIOMES = {
     name: 'The Barrow Fields', dark: 0.3, tint: 'rgba(80,90,130,0.12)', ambient: 'fog',
     favored: { skeleton: 3, archer: 2, wraith: 2.5 },
     ground: ['#3b4036', '#43483d', '#4b5144', '#545a4c', '#5e6455'],
-    density: 0.13,
-    props: { g_tomb1: 2, g_tomb2: 2, g_tomb3: 2, g_tomb4: 2, g_coffin: 0.6, g_candle1: 1, g_candle2: 1, g_urn: 0.7, g_bone: 1, g_bush: 1.5 },
+    density: 0.09,
+    props: { g_tomb1: 2, g_tomb2: 2, g_tomb3: 2, g_tomb4: 2, g_coffin: 0.6, g_bush: 1.5 },
   },
   volcanic: {
     dust: 'rgba(70,58,55,0.6)',
     name: 'The Ashen Wastes', dark: 0.35, tint: 'rgba(255,60,20,0.08)', ambient: 'embers',
     favored: { orc: 2.5, mage: 1.5, troll: 1.5 },
     ground: ['#241e1d', '#2c2524', '#352c2a', '#3e3431', '#483c38'],
-    density: 0.09,
-    props: { v_obs1: 1.5, v_obs2: 1.5, v_rock1: 1.5, v_rock2: 1.5, v_cl1: 1, v_cl2: 1, v_ember1: 1, v_ember2: 1, v_log: 0.6 },
+    density: 0.06,
+    props: { v_obs1: 1.5, v_obs2: 1.5, v_rock1: 1.5, v_rock2: 1.5, v_cl1: 1, v_cl2: 1 },
   },
 };
 JJ.BIOME_KEYS = Object.keys(JJ.BIOMES);
@@ -344,7 +344,7 @@ JJ.World = (() => {
         // Props sit back a little (dimmed) so monsters read clearly on top.
         const o = { flip: p.flip, center: lily };
         JJ.Sprites.draw(ctx, p.name, p.x, p.y, 28, o);
-        if (!JJ.GLOW_PROPS[p.name]) JJ.Sprites.draw(ctx, p.name, p.x, p.y, 28, { ...o, tint: 'dark', alpha: 0.28 });
+        if (!JJ.GLOW_PROPS[p.name]) JJ.Sprites.draw(ctx, p.name, p.x, p.y, 28, { ...o, tint: 'dark', alpha: 0.38 });
         const g = JJ.GLOW_PROPS[p.name];
         if (g && p.x >= 0 && p.x < S && p.y >= 0 && p.y < S) lights.push({ x: p.wx, y: p.wy - 14, r: g[1], color: g[0], a: 0.7 });
       }

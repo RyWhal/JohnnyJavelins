@@ -2,6 +2,7 @@
 'use strict';
 
 JJ.PROJECTILE_CAP = 2600;
+JJ.ENEMY_FIRE = '#ff2d1f';
 JJ.ENEMY_CAP = 430;
 
 JJ.Game = class Game {
@@ -1223,9 +1224,10 @@ JJ.Game = class Game {
     if (pat.then && pat.type !== 'charge') this.bossPattern(e, pat.then);
   }
 
-  fireShot(x, y, ang, spd, r, dmg, color, kind) {
+  // All enemy fire is the same red so danger reads at a glance.
+  fireShot(x, y, ang, spd, r, dmg, _color, kind) {
     if (this.shots.length > 500) return;
-    this.shots.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, ang, r, dmg, color, kind, life: 5 });
+    this.shots.push({ x, y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd, ang, r, dmg, color: JJ.ENEMY_FIRE, kind, life: 5 });
     JJ.Audio.sfx.shoot();
   }
 

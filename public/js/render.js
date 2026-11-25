@@ -589,40 +589,57 @@ JJ.Renderer = class Renderer {
     }
   }
 
+  // Enemy fire: one consistent red, with a dark rim so it reads even on lava.
   drawShots(time) {
     const { ctx } = this;
+    const red = JJ.ENEMY_FIRE;
+    const pulse = 0.3 + 0.1 * Math.sin(time * 14);
     for (const b of this.game.shots) {
       if (b.kind === 'arrow') {
         const c = Math.cos(b.ang), sn = Math.sin(b.ang);
-        ctx.strokeStyle = '#8b6a3e';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(255,45,31,0.35)';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(b.x - c * 16, b.y - sn * 16);
+        ctx.lineTo(b.x + c * 4, b.y + sn * 4);
+        ctx.stroke();
+        ctx.strokeStyle = '#7a0d06';
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
         ctx.moveTo(b.x - c * 16, b.y - sn * 16);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
-        ctx.fillStyle = '#d8d8d8';
+        ctx.fillStyle = red;
+        ctx.strokeStyle = '#2a0503';
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(b.x + c * 5, b.y + sn * 5);
-        ctx.lineTo(b.x - c * 2 - sn * 3, b.y - sn * 2 + c * 3);
-        ctx.lineTo(b.x - c * 2 + sn * 3, b.y - sn * 2 - c * 3);
+        ctx.moveTo(b.x + c * 6, b.y + sn * 6);
+        ctx.lineTo(b.x - c * 2 - sn * 3.5, b.y - sn * 2 + c * 3.5);
+        ctx.lineTo(b.x - c * 2 + sn * 3.5, b.y - sn * 2 - c * 3.5);
+        ctx.closePath();
         ctx.fill();
+        ctx.stroke();
         continue;
       }
-      ctx.fillStyle = b.color;
-      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = red;
+      ctx.globalAlpha = pulse;
       ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r * 1.7, 0, JJ.TAU);
+      ctx.arc(b.x, b.y, b.r * 1.8, 0, JJ.TAU);
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.r, 0, JJ.TAU);
       ctx.fill();
-      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#2a0503';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = '#ffd2c8';
       ctx.beginPath();
-      ctx.arc(b.x, b.y, b.r * 0.4, 0, JJ.TAU);
+      ctx.arc(b.x - b.r * 0.15, b.y - b.r * 0.15, b.r * 0.4, 0, JJ.TAU);
       ctx.fill();
     }
   }
+
 
   drawPickups(time) {
     const { ctx } = this;
